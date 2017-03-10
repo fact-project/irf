@@ -33,7 +33,7 @@ def main(directories, outputfile):
         /fhgfs/groups/app/fact/simulated/corsika/gamma_*
 
 
-    The output ist stored in the OUTPUTFILE as csv data.
+    The output ist stored in the OUTPUTFILE as pandas hdf5 data.
     The filenames are expected to be named according to this pattern:
 
         'cer\d{6}.gz'
@@ -53,7 +53,7 @@ def main(directories, outputfile):
 
     df = pd.concat(itertools.chain(results))
     print('number of events parsed: {}'.format(len(df)))
-    df.to_csv(outputfile, index=False)
+    df.to_hdf(outputfile, key='table')
 
 
 def read_mmc_headers(data_file):
