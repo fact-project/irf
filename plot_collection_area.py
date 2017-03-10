@@ -64,7 +64,7 @@ def main(
                 xerr=bin_width / 2.0,
                 yerr=[lower.value, upper.value],
                 linestyle='',
-                label='{:2.0f} - {:2.0f}'.format(y_edges[i], y_edges[i + 1])
+                label='Zenith {:2.0f} - {:2.0f}'.format(y_edges[i], y_edges[i + 1])
             )
     #
     # plt.title('Collection Area')
