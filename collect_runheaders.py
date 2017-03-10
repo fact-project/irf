@@ -28,6 +28,11 @@ def main(directories, outputfile):
     This tool collects information from Corsika (MMCs) outputfile needed to create
     IRFs (effectice area and such).
     This tool iterates over the files in the DIRECTORIES given in the first argument.
+    Note that you can pass many directories as the first argument such as
+
+        /fhgfs/groups/app/fact/simulated/corsika/gamma_*
+
+
     The output ist stored in the OUTPUTFILE as csv data.
     The filenames are expected to be named according to this pattern:
 
