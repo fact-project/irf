@@ -46,7 +46,7 @@ def histograms(
     )
     # print('{} gammas left after applying cuts'.format(len(predictions)))
 
-    showers['energy'] = showers['energy'].apply(np.log)
+    showers['energy'] = showers['energy'].apply(np.log10)
     showers['zenith'] = showers['zenith'].apply(np.rad2deg)
 
     predictions['energy'] = predictions['MCorsikaEvtHeader.fTotalEnergy'].apply(np.log10)
@@ -56,7 +56,7 @@ def histograms(
         showers.energy, showers.zenith, bins=(energy_bins, zenith_bins)
     )
     hist_data, x_edges, y_edges = np.histogram2d(
-        predictions.energy, predictions.zenith, bins=(energy_bins, zenith_bins)
+        predictions.energy, predictions.zenith, bins=(x_edges, y_edges)
     )
 
     return hist_showers, hist_data,  x_edges, y_edges
