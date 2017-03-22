@@ -17,6 +17,7 @@ setup(
         'eventio',
         'pandas',
         'click',
+        'joblib',
     ],
     entry_points={
         'console_scripts': [

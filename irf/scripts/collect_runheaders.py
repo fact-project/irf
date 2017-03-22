@@ -6,8 +6,8 @@ import struct
 import os
 import gzip
 import re
-import multiprocessing
 import itertools
+import joblib
 
 
 BLOCK_SIZE = 273 * 4
@@ -42,7 +42,7 @@ def main(directories, outputfile, pattern):
     '''
 
     filename_re = re.compile(pattern)
-    pool = multiprocessing.Pool()
+    pool = joblib.Parallel(n_jobs=-1, verbose=10)
 
     results = []
 
@@ -54,7 +54,10 @@ def main(directories, outputfile, pattern):
             len(mc_files), directory
         ))
 
-        results += [df for df in pool.map(read_mmc_headers, mc_files)]
+        results += pool(
+            joblib.delayed(read_mmc_headers)(f)
+            for f in mc_files
+        )
 
     df = pd.concat(itertools.chain(results))
     print('number of events parsed: {}'.format(len(df)))
@@ -72,7 +75,14 @@ def read_mmc_headers(data_file):
         i = 0
         while True:
             try:
-                current_block = binary_blob[i * BLOCK_SIZE: (i + 1) * BLOCK_SIZE]
+                first = i * BLOCK_SIZE
+                last = (i + 1) * BLOCK_SIZE
+
+                if last > len(binary_blob):
+                    break
+
+                current_block = binary_blob[first:last]
+                i += 1
 
                 if current_block[:4] != b'EVTH':
                     continue
@@ -88,7 +98,6 @@ def read_mmc_headers(data_file):
                 break
 
             skip += BLOCK_SIZE
-
     return pd.DataFrame({'energy': energies, 'zenith': zenith})
 
 
