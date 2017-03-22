@@ -10,20 +10,25 @@ import multiprocessing
 import itertools
 
 
-HEADER_SIZE = 273 * 4
+BLOCK_SIZE = 273 * 4
 
 
 @click.command()
 @click.argument(
-        'directories',
-        nargs=-1,
-        type=click.Path(file_okay=False, dir_okay=True, exists=True),
-    )
+    'directories',
+    nargs=-1,
+    type=click.Path(file_okay=False, dir_okay=True, exists=True),
+)
 @click.argument(
-        'outputfile',
-        type=click.Path(file_okay=True, dir_okay=False, exists=False),
-    )
-def main(directories, outputfile):
+    'outputfile',
+    type=click.Path(file_okay=True, dir_okay=False, exists=False),
+)
+@click.option(
+    '-p', '--pattern',
+    default='cer\d{6}.gz',
+    help='Regex pattern for the inputfiles',
+)
+def main(directories, outputfile, pattern):
     '''
     This tool collects information from Corsika (MMCs) outputfile needed to create
     IRFs (effectice area and such).
@@ -34,21 +39,21 @@ def main(directories, outputfile):
 
 
     The output ist stored in the OUTPUTFILE as pandas hdf5 data.
-    The filenames are expected to be named according to this pattern:
-
-        'cer\d{6}.gz'
-
-    which should be the case for FACT simulations.
     '''
 
+    filename_re = re.compile(pattern)
     pool = multiprocessing.Pool()
+
     results = []
+
     for directory in directories:
-        mc_files = filter(lambda name:  re.match(
-            'cer\d{6}.gz', name) is not None, os.listdir(directory))
+        mc_files = filter(filename_re.match, os.listdir(directory))
         mc_files = [os.path.join(directory, f) for f in mc_files]
+
         print('Found {} files to read in directory {}'.format(
-            len(mc_files), directory))
+            len(mc_files), directory
+        ))
+
         results += [df for df in pool.map(read_mmc_headers, mc_files)]
 
     df = pd.concat(itertools.chain(results))
@@ -61,21 +66,28 @@ def read_mmc_headers(data_file):
     zenith = []
 
     with gzip.open(data_file, mode='rb') as f:
-        c = f.read()
+        binary_blob = f.read()
 
-        skip = HEADER_SIZE
+        skip = BLOCK_SIZE
+        i = 0
         while True:
             try:
-                event_header = np.array(struct.unpack(
-                    '273f', c[skip:skip + HEADER_SIZE]))
+                current_block = binary_blob[i * BLOCK_SIZE: (i + 1) * BLOCK_SIZE]
+
+                if current_block[:4] != b'EVTH':
+                    continue
+
+                event_header = np.array(struct.unpack('273f', current_block))
+
                 e = parse_corsika_event_header(event_header)
+
                 zenith.append(e.zenith_angle)
                 energies.append(e.total_energy)
-            except ValueError as e:
-                pass
+
             except struct.error:
                 break
-            skip += HEADER_SIZE
+
+            skip += BLOCK_SIZE
 
     return pd.DataFrame({'energy': energies, 'zenith': zenith})
 
