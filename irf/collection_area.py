@@ -4,8 +4,8 @@ import astropy.units as u
 
 
 def histograms_energy_zenith(
-        showers,
-        predictions,
+        all_events,
+        selected_events,
         bins_energy,
         bins_zenith,
         log=True,
@@ -18,21 +18,21 @@ def histograms_energy_zenith(
     returns hist_all, hist_selected,  energy_edges, zenith_edges
     '''
 
-    showers_energy = showers['energy'].apply(np.log10)
-    showers_zenith = showers['zenith'].apply(np.rad2deg)
+    all_events_energy = all_events['energy'].apply(np.log10)
+    all_events_zenith = all_events['zenith'].apply(np.rad2deg)
 
-    predictions_energy = predictions['energy'].apply(np.log10)
-    predictions_zenith = predictions['zenith'].apply(np.rad2deg)
+    selected_events_energy = selected_events['energy'].apply(np.log10)
+    selected_events_zenith = selected_events['zenith'].apply(np.rad2deg)
 
     hist_all, energy_edges, zenith_edges = np.histogram2d(
-        showers_energy,
-        showers_zenith,
+        all_events_energy,
+        all_events_zenith,
         bins=(bins_energy, bins_zenith)
     )
 
     hist_selected, _, _ = np.histogram2d(
-        predictions_energy,
-        predictions_zenith,
+        selected_events_energy,
+        selected_events_zenith,
         bins=(energy_edges, zenith_edges)
     )
 
@@ -40,9 +40,10 @@ def histograms_energy_zenith(
 
 
 def histograms_energy(
-        showers,
-        predictions,
+        all_events,
+        selected_events,
         bins_energy,
+        log=True,
         ):
     '''
     calculate the matrices from the analysed and the simulated events.
@@ -52,16 +53,20 @@ def histograms_energy(
     returns hist_all, hist_selected,  energy_edges
     '''
 
-    showers_energy = showers['energy'].apply(np.log10)
-    predictions_energy = predictions['energy'].apply(np.log10)
+    if log is True:
+        all_events_energy = all_events['energy'].apply(np.log10)
+        selected_events_energy = selected_events['energy'].apply(np.log10)
+    else:
+        all_events_energy = all_events['energy']
+        selected_events_energy = selected_events['energy']
 
     hist_all, energy_edges = np.histogram(
-        showers_energy,
+        all_events_energy,
         bins=bins_energy
     )
 
     hist_selected, _ = np.histogram(
-        predictions_energy,
+        selected_events_energy,
         bins=energy_edges
     )
 
@@ -74,6 +79,7 @@ def collection_area_energy(
         selected_events,
         bins_energy,
         impact,
+        log=True,
         ):
     '''
     Calculate the collection area for the given events.
@@ -94,11 +100,12 @@ def collection_area_energy(
     hist_all, hist_selected, energy_edges = histograms_energy(
         all_events,
         selected_events,
-        bins_energy
+        bins_energy,
+        log=log
     )
 
-    bin_width = energy_edges[1] - energy_edges[0]
-    bin_center = energy_edges[1:] - 0.5 * bin_width
+    bin_width = np.diff(energy_edges)
+    bin_center = 0.5 * (energy_edges[:-1] + energy_edges[1:])
 
     # use astropy to compute errors on that stuff
     conf = binom_conf_interval(hist_selected, hist_all)
