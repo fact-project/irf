@@ -9,6 +9,8 @@ import re
 import itertools
 import joblib
 
+from ..corsika import read_corsika_headers
+
 
 BLOCK_SIZE = 273 * 4
 
@@ -25,10 +27,16 @@ BLOCK_SIZE = 273 * 4
 )
 @click.option(
     '-p', '--pattern',
-    default='cer\d{6}.gz',
+    default='cer\d{6}.*',
     help='Regex pattern for the inputfiles',
 )
-def main(directories, outputfile, pattern):
+@click.option(
+    '-n', '--n-jobs',
+    default=-1,
+    type=int,
+    help='How may cores to use in parallel',
+)
+def main(directories, outputfile, pattern, n_jobs):
     '''
     This tool collects information from Corsika (MMCs) outputfile needed to create
     IRFs (effectice area and such).
@@ -42,7 +50,7 @@ def main(directories, outputfile, pattern):
     '''
 
     filename_re = re.compile(pattern)
-    pool = joblib.Parallel(n_jobs=-1, verbose=10)
+    pool = joblib.Parallel(n_jobs=n_jobs, verbose=10)
 
     results = []
 
@@ -64,41 +72,24 @@ def main(directories, outputfile, pattern):
     df.to_hdf(outputfile, key='table')
 
 
+def open_file(f):
+    basename, ext = os.path.splitext(f)
+
+    if ext == '.gz':
+        return gzip.open(f, mode='rb')
+    else:
+        return open(f, mode='rb')
+
+
 def read_mmc_headers(data_file):
-    energies = []
-    zenith = []
 
-    with gzip.open(data_file, mode='rb') as f:
-        binary_blob = f.read()
+    with open_file(data_file) as f:
+        headers = read_corsika_headers(f)
 
-        skip = BLOCK_SIZE
-        i = 0
-        while True:
-            try:
-                first = i * BLOCK_SIZE
-                last = (i + 1) * BLOCK_SIZE
+    energies = [e.total_energy for e in headers['event_headers']]
+    zeniths = [e.zenith_angle for e in headers['event_headers']]
 
-                if last > len(binary_blob):
-                    break
-
-                current_block = binary_blob[first:last]
-                i += 1
-
-                if current_block[:4] != b'EVTH':
-                    continue
-
-                event_header = np.array(struct.unpack('273f', current_block))
-
-                e = parse_corsika_event_header(event_header)
-
-                zenith.append(e.zenith_angle)
-                energies.append(e.total_energy)
-
-            except struct.error:
-                break
-
-            skip += BLOCK_SIZE
-    return pd.DataFrame({'energy': energies, 'zenith': zenith})
+    return pd.DataFrame({'energy': energies, 'zenith': zeniths})
 
 
 if __name__ == '__main__':
