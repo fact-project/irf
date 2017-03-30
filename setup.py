@@ -18,6 +18,7 @@ setup(
         'pandas',
         'click',
         'joblib',
+        'pyfact>=0.9.1',
     ],
     entry_points={
         'console_scripts': [
