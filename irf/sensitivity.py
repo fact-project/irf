@@ -1,5 +1,7 @@
 import numpy as np
 import astropy.units as u
+import uncertainties as unc
+import uncertainties.unumpy as unp
 
 
 @u.quantity_input(t_obs=u.hour, t_ref=u.hour)
@@ -32,6 +34,14 @@ def relative_sensitivity(
     significance: float
         Significance necessary for a detection
     '''
-    t1 = n_off * np.log(n_off * (1 + alpha) / (n_on + n_off))
-    t2 = n_on * np.log(n_on * (1 + alpha) / alpha / (n_on + n_off))
-    return significance**2 / 2 * t_obs / t_ref * (t1 + t2)
+    ratio = (t_obs / t_ref).decompose().value
+
+    n_on = unp.uarray(n_on, np.sqrt(n_on))
+    n_off = unp.uarray(n_off, np.sqrt(n_off))
+
+    t_off = n_off * unp.log(n_off * (1 + alpha) / (n_on + n_off))
+    t_on = n_on * unp.log(n_on * (1 + alpha) / alpha / (n_on + n_off))
+
+    sensitivity = significance**2 / 2 * ratio / (t_on + t_off)
+
+    return unp.nominal_values(sensitivity), unp.std_devs(sensitivity)

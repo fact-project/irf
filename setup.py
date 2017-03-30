@@ -19,6 +19,7 @@ setup(
         'click',
         'joblib',
         'pyfact>=0.9.1',
+        'uncertainties',
     ],
     entry_points={
         'console_scripts': [
