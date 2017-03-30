@@ -1,8 +1,5 @@
-import numpy as np
 import pandas as pd
 import click
-from eventio.iact.parse_corsika_data import parse_corsika_event_header
-import struct
 import os
 import gzip
 import re
@@ -10,9 +7,6 @@ import itertools
 import joblib
 
 from ..corsika import read_corsika_headers
-
-
-BLOCK_SIZE = 273 * 4
 
 
 @click.command()
