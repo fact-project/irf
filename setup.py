@@ -11,6 +11,7 @@ setup(
     license='MIT',
     packages=[
         'irf',
+        'irf.scripts',
     ],
     install_requires=[
         'numpy',
