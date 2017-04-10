@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='irf',
-    version='0.0.1',
+    version='0.0.2',
     description='Functions to do instrument response functions for FACT',
     url='http://github.com/fact-project/irf',
     author='Kai Brügge, Maximilian Nöthe',
@@ -11,6 +11,7 @@ setup(
     license='MIT',
     packages=[
         'irf',
+        'irf.scripts',
     ],
     install_requires=[
         'numpy',
@@ -18,6 +19,8 @@ setup(
         'pandas',
         'click',
         'joblib',
+        'pyfact>=0.9.1',
+        'uncertainties',
     ],
     entry_points={
         'console_scripts': [
