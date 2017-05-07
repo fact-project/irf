@@ -66,7 +66,7 @@ def relative_sensitivity(
 
     def equation(relative_flux):
         n_on = n_signal * relative_flux + n_background
-        return li_ma_significance(n_on, n_off, alpha) - target_significance
+        return significance_function(n_on, n_off, alpha) - target_significance
 
     try:
         phi_rel = newton(equation, x0=1.0)
