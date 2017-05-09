@@ -80,6 +80,7 @@ def collection_area_energy(
         bins_energy,
         impact,
         log=True,
+        sample_fraction=None,
         ):
     '''
     Calculate the collection area for the given events.
@@ -95,6 +96,9 @@ def collection_area_energy(
         either number of bins or bin edges for the histogram in energy
     impact: astropy Quantity of type length
         The maximal simulated impact parameter
+    sample_fraction: float or None
+        If not None, the fraction of `all_events` that was analysed
+        to create `selected_events`
     '''
 
     hist_all, hist_selected, energy_edges = histograms_energy(
@@ -104,13 +108,23 @@ def collection_area_energy(
         log=log
     )
 
+    if sample_fraction is not None:
+        hist_selected = (hist_selected / sample_fraction).astype(int)
+
     bin_width = np.diff(energy_edges)
     bin_center = 0.5 * (energy_edges[:-1] + energy_edges[1:])
 
+    valid = hist_selected <= hist_all
     # use astropy to compute errors on that stuff
-    conf = binom_conf_interval(hist_selected, hist_all)
+    lower_conf = np.full(len(bin_center), np.nan)
+    upper_conf = np.full(len(bin_center), np.nan)
+    lower_conf[valid], upper_conf[valid] = binom_conf_interval(
+        hist_selected[valid], hist_all[valid]
+    )
+
     # scale confidences to match and split
-    lower_conf, upper_conf = conf * np.pi * impact**2
+    lower_conf = lower_conf * np.pi * impact**2
+    upper_conf = upper_conf * np.pi * impact**2
 
     area = hist_selected / hist_all * np.pi * impact**2
 
