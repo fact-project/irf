@@ -15,13 +15,27 @@ def histograms_energy_zenith(
     when dividing these matrices you get the some response which,
     when normalised correctly, corresponds to the collection area.
 
-    returns hist_all, hist_selected,  energy_edges, zenith_edges
+    Parameters
+    ----------
+    all_events: pd.DataFrame
+        DataFrame with all simulated events.
+        Must contain columns named 'zenith' and 'energy'
+    selected_events: pd.DataFrame
+        DataFrame with events that survived event selection.
+        Must contain columns named 'zenith' and 'energy'
+    bins_energy: int or array-like
+        either number of bins or bin edges for the histogram in energy
+    log: bool
+        flag indicating whether log10 should be applied to the energy.
+
+    returns: hist_all, hist_selected,  energy_edges, zenith_edges
     '''
 
-    all_events_energy = all_events['energy'].apply(np.log10)
-    all_events_zenith = all_events['zenith'].apply(np.rad2deg)
+    if log:
+        all_events_energy = all_events['energy'].apply(np.log10)
+        selected_events_energy = selected_events['energy'].apply(np.log10)
 
-    selected_events_energy = selected_events['energy'].apply(np.log10)
+    all_events_zenith = all_events['zenith'].apply(np.rad2deg)
     selected_events_zenith = selected_events['zenith'].apply(np.rad2deg)
 
     hist_all, energy_edges, zenith_edges = np.histogram2d(
@@ -43,6 +57,7 @@ def histograms_energy(
         all_events,
         selected_events,
         bins_energy,
+        target='corsika_evt_header_total_energy',
         log=True,
         ):
     '''
@@ -50,7 +65,20 @@ def histograms_energy(
     when dividing these matrices you get the some response which,
     when normalised correctly, corresponds to the collection area.
 
-    returns hist_all, hist_selected,  energy_edges
+    Parameters
+    ----------
+    all_events: pd.DataFrame
+        DataFrame with all simulated events.
+        Must contain column named 'energy'
+    selected_events: pd.DataFrame
+        DataFrame with events that survived event selection.
+        Must contain column named 'energy'
+    bins_energy: int or array-like
+        either number of bins or bin edges for the histogram in energy
+    log: bool
+        flag indicating whether log10 should be applied to the energy.
+
+    returns: hist_all, hist_selected,  energy_edges
     '''
 
     if log is True:
@@ -79,6 +107,7 @@ def collection_area_energy(
         selected_events,
         bins_energy,
         impact,
+        target='corsika_evt_header_total_energy',
         log=True,
         sample_fraction=None,
         ):
@@ -88,19 +117,24 @@ def collection_area_energy(
     Parameters
     ----------
     all_events: pd.DataFrame
-        DataFrame with all simulated events, must contain column "energy"
+        DataFrame with all simulated events.
     selected_events: pd.DataFrame
-        DataFrame with events that survived event selection,
-        must contain column "energy"
+        DataFrame with events that survived event selection.
     bins_energy: int or array-like
         either number of bins or bin edges for the histogram in energy
     impact: astropy Quantity of type length
         The maximal simulated impact parameter
+    target: string
+        The key name of the energy variable. Default 'corsika_evt_header_total_energy'
+        for getting the collection area vs the true energy.
+    log: bool
+        flag indicating whether log10 should be applied to the energy.
     sample_fraction: float or None
         If not None, the fraction of `all_events` that was analysed
         to create `selected_events`
     '''
 
+    selected_events['energy'] = selected_events[target].copy()
     hist_all, hist_selected, energy_edges = histograms_energy(
         all_events,
         selected_events,
