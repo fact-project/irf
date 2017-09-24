@@ -1,9 +1,6 @@
-import struct
-import numpy as np
-
-from eventio.iact.parse_corsika_data import (
-    parse_corsika_run_header,
-    parse_corsika_event_header
+from .parse_corsika import (
+    parse_run_header,
+    parse_event_header
 )
 
 
@@ -17,13 +14,7 @@ def corsika_read(f, raw):
     return f.read(4*273)
 
 
-struct_header = struct.Struct('273f')
-struct_particle = struct.Struct('273f')  # 39 times, if empty rest is 0
-
-
 def read_corsika_headers(inputfile):
-    data = {}
-
     byte_data = corsika_read(inputfile, raw=False)
 
     if(byte_data[0:4] == b'RUNH'):
@@ -33,31 +24,22 @@ def read_corsika_headers(inputfile):
         inputfile.seek(4)
         byte_data = inputfile.read(4*273)
 
-    RUNH = struct_header.unpack(byte_data)
-
-    data['run_header'] = parse_corsika_run_header(np.array(RUNH))
-    data['event_headers'] = []
+    run_header = parse_run_header(byte_data)
 
     # Read Eventheader
-    counter = 0
+    event_header_data = b''
     while True:
         byte_data = corsika_read(inputfile, fortran_raw)
 
         # No more Shower in file
-        if(byte_data[0:4] == b'RUNE'):
+        if byte_data[0:4] == b'RUNE':
             break
 
-        EVTH = struct_header.unpack(byte_data)
+        if byte_data[0:4] != b'EVTH':
+            continue
 
-        data['event_headers'].append(
-            parse_corsika_event_header(np.array(EVTH))
-        )
+        event_header_data += byte_data
 
-        while True:
-            byte_data = corsika_read(inputfile, fortran_raw)
+    event_headers = parse_event_header(event_header_data)
 
-            if(byte_data[0:4] == b'EVTE'):
-                break
-
-        counter = counter + 1
-    return data
+    return run_header, event_headers
