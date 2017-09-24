@@ -88,7 +88,7 @@ def main(directories, outputfile, pattern, n_jobs):
     The output ist stored in the OUTPUTFILE as pandas hdf5 data.
     '''
 
-    with h5py.File(outputfile, 'r+') as f:
+    with h5py.File(outputfile, 'a') as f:
         if 'corsika_runs' in f.keys() or 'corsika_events' in f.keys():
             click.confirm(
                 'Group "corsika_runs" exists in outputfile, overwrite? ',
