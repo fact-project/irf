@@ -1,7 +1,39 @@
 import numpy as np
+import struct
+
+run_header_dtype_65 = np.dtype([
+    ('run_header', 'S4'),  # 1
+    ('run_number', 'float32'),  # 2
+    ('date', 'float32'),  # 3
+    ('version', 'float32'),  # 4
+    ('n_observation_levels', 'float32'),  # 5
+    ('observation_height', 'float32', (10, )),  # 6 - 15
+    ('energy_spectrum_slope', 'float32'),  # 16
+    ('energy_min', 'float32'),  # 17
+    ('energy_max', 'float32'),  # 18
+    ('egs4_flag', 'float32'),  # 19
+    ('nkg_flag', 'float32'),  # 20
+    ('energy_cutoff_hadrons', 'float32'),  # 21
+    ('energy_cutoff_muons', 'float32'),  # 22
+    ('energy_cutoff_electrons', 'float32'),  # 23
+    ('energy_cutoff_photons', 'float32'),  # 24
+    ('physical_constants_and_interaction_flags', 'float32', (50, )),  # 25 - 74
+    ('unused', 'float32', (20, )),  # 75 - 94
+    ('cka', 'float32', (40, )),  # 94 - 134
+    ('ceta', 'float32', (5, )),  # 135 - 139
+    ('cstrba', 'float32', (11, )),  # 140 - 150
+    ('unused2', 'float32', (104, )),  # 150 - 254
+    ('aatm', 'float32', (5, )),  # 255 - 259
+    ('batm', 'float32', (5, )),  # 260 - 264
+    ('catm', 'float32', (5, )),  # 265 - 269
+    ('nflain', 'float32'),  # 270
+    ('nfdif', 'float32'),  # 271
+    ('nflpi0_100nflpif', 'float32'),  # 272
+    ('nflche_100nfgragm', 'float32'),  # 273
+])
 
 
-run_header_dtype = np.dtype([
+run_header_dtype_75 = np.dtype([
     ('run_header', 'S4'),
     ('run_number', 'float32'),
     ('date', 'float32'),
@@ -42,7 +74,91 @@ run_header_dtype = np.dtype([
 ])
 
 
-event_header_dtype = np.dtype([
+event_header_dtype_65 = np.dtype([
+    ('event_header', 'S4'),  # 1
+    ('event_number', 'float32'),  # 2
+    ('particle_id', 'float32'),  # 3
+    ('total_energy', 'float32'),  # 4
+    ('starting_altitude', 'float32'),  # 5
+    ('first_target_id', 'float32'),  # 6
+    ('first_interaction_height', 'float32'),  # 7
+    ('momentum_x', 'float32'),  # 8
+    ('momentum_y', 'float32'),  # 9
+    ('momentum_minus_z', 'float32'),  # 10
+    ('zenith', 'float32'),  # 11
+    ('azimuth', 'float32'),  # 12
+    ('n_random_sequences', 'float32'),  # 13
+    ('random_seeds', 'float32', (10, 3)),  # 14 - 43
+    ('run_number', 'float32'),  # 44
+    ('date', 'float32'),  # 45
+    ('version', 'float32'),  # 46
+    ('n_observation_levels', 'float32'),  # 47
+    ('observation_height', 'float32', (10, )),  # 48 - 57
+    ('energy_spectrum_slope', 'float32'),  # 58
+    ('energy_min', 'float32'),  # 59
+    ('energy_max', 'float32'),  # 60
+    ('energy_cutoff_hadrons', 'float32'),  # 61
+    ('energy_cutoff_muons', 'float32'),  # 62
+    ('energy_cutoff_electrons', 'float32'),  # 63
+    ('energy_cutoff_photons', 'float32'),  # 64
+    ('nflain', 'float32'),  # 65
+    ('nfdif', 'float32'),  # 66
+    ('nflpi0', 'float32'),  # 67
+    ('nflpif', 'float32'),  # 68
+    ('nflche', 'float32'),  # 69
+    ('nflfragm', 'float32'),  # 70
+    ('earth_magnetic_field_x', 'float32'),  # 71
+    ('earth_magnetic_field_z', 'float32'),  # 72
+    ('egs4_flag', 'float32'),  # 73
+    ('nkg_flag', 'float32'),  # 74
+    ('low_energy_hadron_model', 'float32'),  # 75
+    ('high_energy_hadron_model', 'float32'),  # 76
+    ('cerenkov_flag', 'float32'),  # 77
+    ('neutrino_flag', 'float32'),  # 78
+    ('curved_flag', 'float32'),  # 79
+    ('computer', 'float32'),  # 80
+    ('theta_min', 'float32'),  # 81
+    ('theta_max', 'float32'),  # 82
+    ('phi_min', 'float32'),  # 83
+    ('phi_max', 'float32'),  # 84
+    ('cherenkov_bunch_size', 'float32'),  # 85
+    ('n_cherenkov_detectors_x', 'float32'),  # 86
+    ('n_cherenkov_detectors_y', 'float32'),  # 87
+    ('cherenkov_detector_grid_spacing_x', 'float32'),  # 88
+    ('cherenkov_detector_grid_spacing_y', 'float32'),  # 89
+    ('cherenkov_detector_length_x', 'float32'),  # 90
+    ('cherenkov_detector_length_y', 'float32'),  # 91
+    ('cherenkov_output_flag', 'float32'),  # 92
+    ('angle_array_x_magnetic_north', 'float32'),  # 93
+    ('additional_muon_information_flag', 'float32'),  # 94
+    ('egs4_multpliple_scattering_step_length_factor', 'float32'),  # 95
+    ('cherenkov_wavelength_min', 'float32'),  # 96
+    ('cherenkov_wavelength_max', 'float32'),  # 97
+    ('n_reuse', 'float32'),  # 98
+    ('reuse_x', 'float32', 20),  # 99 - 118
+    ('reuse_y', 'float32', 20),  # 119 - 138
+    ('sybill_interaction_flag', 'float32'),  # 139
+    ('sybill_cross_section_flag', 'float32'),  # 140
+    ('qgsjet_interaction_flag', 'float32'),  # 141
+    ('qgsjet_cross_section_flag', 'float32'),  # 142
+    ('dpmjet_interaction_flag', 'float32'),  # 143
+    ('dpmjet_cross_section_flag', 'float32'),  # 144
+    ('venus_nexus_epos_cross_section_flag', 'float32'),  # 145
+    ('muon_multiple_scattering_flag', 'float32'),  # 146
+    ('nkg_radial_distribution_range', 'float32'),  # 147
+    ('energy_fraction_if_thinning_level_hadronic', 'float32'),  # 148
+    ('energy_fraction_if_thinning_level_em', 'float32'),  # 149
+    ('actual_weight_limit_thinning_hadronic', 'float32'),  # 150
+    ('actual_weight_limit_thinning_em', 'float32'),  # 151
+    ('max_radius_radial_thinning_cutting', 'float32'),  # 152
+    ('viewcone_inner_angle', 'float32'),  # 153
+    ('viewcone_outer_angle', 'float32'),  # 154
+    ('transition_energy_low_high_energy_model', 'float32'),  # 155
+    ('unused', 'float32', 118),
+])
+
+
+event_header_dtype_75 = np.dtype([
     ('event_header', 'S4'),
     ('event_number', 'float32'),
     ('particle_id', 'float32'),
@@ -157,8 +273,26 @@ event_header_dtype = np.dtype([
 
 
 def parse_run_header(run_header_bytes):
-    return np.frombuffer(run_header_bytes, dtype=run_header_dtype)
+    version = read_version(run_header_bytes, 4)
+    return np.frombuffer(run_header_bytes, dtype=run_header_types[version])
 
 
 def parse_event_header(event_header_bytes):
-    return np.frombuffer(event_header_bytes, dtype=event_header_dtype)
+    version = read_version(event_header_bytes, 46)
+    return np.frombuffer(event_header_bytes, dtype=event_header_types[version])
+
+
+def read_version(header_bytes, version_pos):
+    sl = slice(4 * (version_pos - 1), 4 * version_pos)
+    return struct.unpack('f', header_bytes[sl])[0]
+
+
+run_header_types = {
+    6.5: run_header_dtype_65,
+    7.5: run_header_dtype_75,
+}
+
+event_header_types = {
+    6.5: event_header_dtype_65,
+    7.5: event_header_dtype_75,
+}
