@@ -6,44 +6,45 @@ import datetime
 
 
 @u.quantity_input(fov=u.deg)
-def collection_area_to_irf_table(area, bin_center, bin_width, fov=4.5*u.deg):
+def collection_area_to_irf_table(area, bin_center, bin_width, fov=4.5 * u.deg):
     '''
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
     '''
 
-    energy_lo = 10**(bin_center - bin_width/2)
-    energy_hi = 10**(bin_center + bin_width/2)
+    energy_lo = 10**(bin_center - bin_width / 2)
+    energy_hi = 10**(bin_center + bin_width / 2)
 
-    energy_lo = energy_lo[np.newaxis, :]*u.GeV
-    energy_hi = energy_hi[np.newaxis, :]*u.GeV
+    energy_lo = energy_lo[np.newaxis, :] * u.GeV
+    energy_hi = energy_hi[np.newaxis, :] * u.GeV
 
     # the irf format does not specify that it needs at least 2 entries here.
     # however the tools fail if theres just one bin.
     # but the tools are shit anyways
-    theta_lo = np.array([0, fov.to('deg').value/2], ndmin=2) *u.deg
-    theta_hi = np.array([fov.to('deg').value/2, fov.to('deg').value], ndmin=2) * u.deg
+    theta_lo = np.array([0, fov.to('deg').value / 2], ndmin=2) * u.deg
+    theta_hi = np.array(
+        [fov.to('deg').value / 2, fov.to('deg').value], ndmin=2) * u.deg
 
     area = np.vstack([area.value, area.value])
-    area = area[np.newaxis, :]*u.m**2
+    area = area[np.newaxis, :] * u.m**2
 
     t = Table(
         {
-         'ENERG_LO':energy_lo,
-         'ENERG_HI':energy_hi,
-         'THETA_LO':theta_lo,
-         'THETA_HI':theta_hi,
-         'EFFAREA':area,
-         }
+            'ENERG_LO': energy_lo,
+            'ENERG_HI': energy_hi,
+            'THETA_LO': theta_lo,
+            'THETA_HI': theta_hi,
+            'EFFAREA': area,
+        }
     )
 
-    t.meta['DATE']    = datetime.datetime.now().replace(microsecond=0).isoformat()
-    t.meta['TELESCOP']= 'FACT    '
-    t.meta['HDUCLASS']= 'OGIP    '
-    t.meta['HDUCLAS1']= 'RESPONSE'
-    t.meta['HDUCLAS2']= 'EFF_AREA'
-    t.meta['HDUCLAS3']= 'FULL-ENCLOSURE'
-    t.meta['HDUCLAS4']= '2D      '
+    t.meta['DATE'] = datetime.datetime.now().replace(microsecond=0).isoformat()
+    t.meta['TELESCOP'] = 'FACT    '
+    t.meta['HDUCLASS'] = 'OGIP    '
+    t.meta['HDUCLAS1'] = 'RESPONSE'
+    t.meta['HDUCLAS2'] = 'EFF_AREA'
+    t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
+    t.meta['HDUCLAS4'] = '2D      '
     t.meta['EXTNAME'] = 'EFFECTIVE AREA'
     return t
 
@@ -54,7 +55,7 @@ def histograms(
         bins,
         range=None,
         log=True,
-        ):
+):
     '''
     Create histograms in the given bins for two vectors.
 
@@ -101,7 +102,7 @@ def collection_area(
         range=None,
         log=True,
         sample_fraction=1.0,
-        ):
+):
     '''
     Calculate the collection area for the given events.
 
