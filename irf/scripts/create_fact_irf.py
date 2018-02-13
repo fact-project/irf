@@ -1,7 +1,8 @@
 import fact.io
-from irf import collection_area, collection_area_to_irf_table
+from irf import collection_area, collection_area_to_irf_table, energy_dispersion, energy_dispersion_to_irf_table
 import astropy.units as u
 import click
+from astropy.io import fits
 
 
 @click.command()
@@ -19,17 +20,43 @@ import click
 )
 @click.option(
     '-b', '--bins',
-    default=-1,
+    default=5,
     type=int,
     help='How many energy bins to use for the IRF',
 )
 def main(showers, predictions, output_path, bins):
-    showers = fact.io.read_data(showers, key='showers')
+    showers = fact.io.read_data(showers, key='table')
     predictions = fact.io.read_data(predictions, key='events')
 
-    r = collection_area(showers.energy, predictions.energy, bins=bins, impact=270*u.m,)
-    area, bin_center, bin_width, lower_conf, upper_conf  = r
+    energy_true = predictions['corsika_evt_header_total_energy'].values * u.GeV
+    energy_prediction = predictions['gamma_energy_prediction'].values * u.GeV
 
-    table = collection_area_to_irf_table(area, bin_center, bin_width)
-    # TODO also write edisp table
-    table.write(output_path, overwrite=True)
+    r = collection_area(showers.energy, energy_true.value, bins=bins, impact=270 * u.m,)
+    area, bin_center, bin_width, lower_conf, upper_conf = r
+
+    collection_table = collection_area_to_irf_table(area, bin_center, bin_width)
+
+    hist, bins_e_true, bins_e_prediction = energy_dispersion(
+        energy_true,
+        energy_prediction,
+        n_bins=5,
+    )
+
+    e_disp_table = energy_dispersion_to_irf_table(hist, bins_e_true, bins_e_prediction)
+
+
+    header = fits.Header()
+    header['OBSERVER'] = 'The non-insane FACT guys '
+    header['COMMENT'] = 'Behold a full enclosure FACT irf. Very preliminary'
+    header['COMMENT'] = 'See https://gamma-astro-data-formats.readthedocs.io/en/latest/'
+
+    primary_hdu = fits.PrimaryHDU(header=header)
+    collection_hdu = fits.table_to_hdu(collection_table)
+    e_disp_hdu = fits.table_to_hdu(e_disp_table)
+
+    hdulist = fits.HDUList([primary_hdu, collection_hdu, e_disp_hdu])
+    hdulist.writeto(output_path, overwrite=True)
+
+
+if __name__ == '__main__':
+    main()
