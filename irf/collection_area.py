@@ -22,8 +22,7 @@ def collection_area_to_irf_table(area, bin_center, bin_width, fov=4.5 * u.deg):
     # however the tools fail if theres just one bin.
     # but the tools are shit anyways
     theta_lo = np.array([0, fov.to('deg').value / 2], ndmin=2) * u.deg
-    theta_hi = np.array(
-        [fov.to('deg').value / 2, fov.to('deg').value], ndmin=2) * u.deg
+    theta_hi = np.array([fov.to('deg').value / 2, fov.to('deg').value], ndmin=2) * u.deg
 
     area = np.vstack([area.value, area.value])
     area = area[np.newaxis, :] * u.m**2
