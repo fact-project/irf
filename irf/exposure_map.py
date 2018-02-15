@@ -27,6 +27,13 @@ def estimate_exposure_time(timestamps):
 
 @u.quantity_input(ra=u.hourangle, dec=u.deg, fov=u.deg)
 def build_exposure_regions(pointing_coords, fov=4.5 * u.deg):
+    '''
+    Takes a list of pointing positions and a field of view and returns
+    the unique pointing positions and the astropy.regions.
+
+    For an observation with N wobble positions this will return N unique
+    pointing positions and N circular regions.
+    '''
     unique_pointing_positions = SkyCoord(
         ra=np.unique(pointing_coords.ra),
         dec=np.unique(pointing_coords.dec)
@@ -57,7 +64,11 @@ def _build_standard_wcs(image_center, shape, naxis=2, fov=9 * u.deg):
 
 @u.quantity_input(event_ra=u.hourangle, event_dec=u.deg, fov=u.deg)
 def build_exposure_map(pointing_coords, event_time, fov=4.5 * u.deg, wcs=None, shape=(1000, 1000)):
-
+    '''
+    Takes pointing coordinates for each event and the corresponding timestamp.
+    Returns a masked array containing the estimated exposure time in hours
+    and a WCS object so the mask can be plotted. 
+    '''
     if not wcs:
         image_center = SkyCoord(ra=pointing_coords.ra.mean(), dec=pointing_coords.dec.mean())
         wcs = _build_standard_wcs(image_center, shape, fov=2 * fov)
