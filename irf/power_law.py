@@ -67,9 +67,15 @@ class Spectrum():
     See the subclasses `~power_law.CosmicRaySpectrum` and `~power_law.CrabSpectrum`
     for usefull physicall spectra.
     '''
+
     index = -1
     normalization_constant = 1 / (u.TeV * u.m**2 * u.h)
     extended_source = False
+
+    def __init__(self, index=-1, normalization_constant = 1 / (u.TeV * u.m**2 * u.h)):
+        self.index = index
+        self.normalization_constant = normalization_constant
+
 
     @u.quantity_input(e_min=u.TeV, e_max=u.TeV,)
     def draw_energy_distribution(self, e_min, e_max, shape, index=None):
@@ -185,20 +191,24 @@ class Spectrum():
         solid_angle: Quantity (optional)
             the solid angle from which events are detected.
             Not needed for non-extended sources.
-        bins: int
+        bins: int or array like
             The number of bins to create between e_min and e_max.
         log: boolean
             Whether to use logarithmically spaced bins or not.
             So when log == True this will use np.logpsace to create the bins.
 
         '''
-        if log:
-            a = e_min.to('TeV').value
-            b = e_max.to('TeV').value
-            edges = np.logspace(np.log10(a), np.log10(b),
-                                num=bins, base=10.0) * u.TeV
+        if hasattr(bins, '__len__') and (not isinstance(bins, str)):
+            edges=bins
+
         else:
-            edges = np.linspace(e_min, e_max, num=bins)
+            if log:
+                a = e_min.to('TeV').value
+                b = e_max.to('TeV').value
+                edges = np.logspace(np.log10(a), np.log10(b),
+                                    num=bins, base=10.0) * u.TeV
+            else:
+                edges = np.linspace(e_min, e_max, num=bins)
 
         events = []
         for e_low, e_high in zip(edges[0:], edges[1:]):
@@ -253,6 +263,10 @@ class CrabSpectrum(Spectrum):
     '''
     index = -2.62
     normalization_constant = 2.83e-14 / (u.GeV * u.cm**2 * u.s)
+
+    def __init__(self, index = -2.62, normalization_constant = 2.83e-14 / (u.GeV * u.cm**2 * u.s)):
+        self.index = index
+        self.normalization_constant = normalization_constant
 
 
 class CosmicRaySpectrum(Spectrum):
@@ -409,4 +423,3 @@ if __name__ == '__main__':
     plt.xlabel('Energy in TeV')
     plt.legend()
     plt.show()
-
