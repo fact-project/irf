@@ -25,7 +25,7 @@ from astropy.io import fits
     help='How many energy bins to use for the IRF',
 )
 def main(showers, predictions, output_path, bins):
-    showers = fact.io.read_data(showers, key='table')
+    showers = fact.io.read_data(showers, key='showers')
     predictions = fact.io.read_data(predictions, key='events')
 
     energy_true = predictions['corsika_evt_header_total_energy'].values * u.GeV
