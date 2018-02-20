@@ -24,14 +24,24 @@ from astropy.io import fits
     type=int,
     help='How many energy bins to use for the IRF',
 )
-def main(showers, predictions, output_path, bins):
+@click.option(
+    '-t', '--threshold',
+    default=0.85,
+    help='Prediction threshold to apply.',
+)
+@click.option(
+    '-m', '--max_scat',
+    default=270,
+    help='Maximum scatter radius (meter) used during simulations.',
+)
+def main(showers, predictions, output_path, bins, threshold, max_scat):
     showers = fact.io.read_data(showers, key='showers')
-    predictions = fact.io.read_data(predictions, key='events')
+    predictions = fact.io.read_data(predictions, key='events').query(f'gamma_prediction > {threshold}')
 
     energy_true = predictions['corsika_evt_header_total_energy'].values * u.GeV
     energy_prediction = predictions['gamma_energy_prediction'].values * u.GeV
 
-    r = collection_area(showers.energy, energy_true.value, bins=bins, impact=270 * u.m,)
+    r = collection_area(showers.energy, energy_true.value, bins=bins, impact=max_scat * u.m,)
     area, bin_center, bin_width, lower_conf, upper_conf = r
 
     collection_table = collection_area_to_irf_table(area, bin_center, bin_width)
@@ -39,7 +49,7 @@ def main(showers, predictions, output_path, bins):
     hist, bins_e_true, bins_e_prediction = energy_dispersion(
         energy_true,
         energy_prediction,
-        n_bins=5,
+        n_bins=bins,
     )
 
     e_disp_table = energy_dispersion_to_irf_table(hist, bins_e_true, bins_e_prediction)
@@ -49,6 +59,8 @@ def main(showers, predictions, output_path, bins):
     header['OBSERVER'] = 'The non-insane FACT guys '
     header['COMMENT'] = 'Behold a full enclosure FACT irf. Very preliminary'
     header['COMMENT'] = 'See https://gamma-astro-data-formats.readthedocs.io/en/latest/'
+    header['PRED_THR'] = threshold
+    header['MAX_SCAT'] = max_scat
 
     primary_hdu = fits.PrimaryHDU(header=header)
     collection_hdu = fits.table_to_hdu(collection_table)
