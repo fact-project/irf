@@ -1,10 +1,11 @@
-from .collection_area import collection_area
+from .collection_area import collection_area, collection_area_to_irf_table
+
 import numpy as np
 import astropy.units as u
 from scipy.interpolate import RegularGridInterpolator
 
 
-__all__ = ['collection_area']
+__all__ = ['collection_area', 'collection_area_to_irf_table']
 
 
 
