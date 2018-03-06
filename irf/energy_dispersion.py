@@ -4,18 +4,32 @@ import datetime
 from astropy.table import Table
 
 
-@u.quantity_input(bins_e_true=u.GeV, bins_e_prediction=u.GeV)
-def energy_dispersion_to_irf_table(e_disp, bins_e_true, bins_e_prediction, fov=4.5 * u.deg):
+@u.quantity_input(energy_true=u.GeV, energy_prediction=u.GeV)
+def energy_dispersion_to_irf_table(energy_true, energy_prediction, fov=4.5 * u.deg, n_bins=10):
     '''
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
     '''
 
-    energy_lo = bins_e_true[np.newaxis, :-1]
-    energy_hi = bins_e_true[np.newaxis, 1:]
+    e_min = min(
+        min(energy_true),
+        min(energy_prediction)
+    )
+    e_max = max(
+        max(energy_true),
+        max(energy_prediction)
+    )
+    bins_e_true = np.logspace(np.log10(e_min.value), np.log10(e_max.value), endpoint=True, num=n_bins + 1)
 
-    migra_lo = bins_e_prediction[np.newaxis, :-1]
-    migra_hi = bins_e_prediction[np.newaxis, 1:]
+    energy_lo = bins_e_true[np.newaxis, :-1] * energy_true.unit
+    energy_hi = bins_e_true[np.newaxis, 1:] * energy_true.unit
+
+    mu = (energy_prediction / energy_true).si.value
+    bins_mu = np.linspace(mu.min(), mu.max(), endpoint=True, num=n_bins + 1)
+
+
+    migra_lo = bins_mu[np.newaxis, :-1]
+    migra_hi = bins_mu[np.newaxis, 1:]
 
     # the irf format does not specify that it needs at least 2 entries here.
     # however the tools fail if theres just one bin.
@@ -23,7 +37,12 @@ def energy_dispersion_to_irf_table(e_disp, bins_e_true, bins_e_prediction, fov=4
     theta_lo = np.array([0, fov.to('deg').value / 2], ndmin=2) * u.deg
     theta_hi = np.array([fov.to('deg').value / 2, fov.to('deg').value], ndmin=2) * u.deg
 
-    e_disp = np.stack([e_disp, e_disp])[np.newaxis, :]
+    disp, bins_e_true, bins_e_prediction = np.histogram2d(
+        energy_true.value,
+        mu,
+        bins=[bins_e_true, bins_mu],
+    )
+    e_disp = np.stack([disp, disp])[np.newaxis, :]
 
     t = Table(
         {

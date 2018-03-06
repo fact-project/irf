@@ -52,7 +52,7 @@ def main(showers, predictions, output_path, bins, threshold, max_scat):
         n_bins=bins,
     )
 
-    e_disp_table = energy_dispersion_to_irf_table(hist, bins_e_true, bins_e_prediction)
+    e_disp_table = energy_dispersion_to_irf_table(energy_true, energy_prediction, n_bins=bins)
 
 
     header = fits.Header()
