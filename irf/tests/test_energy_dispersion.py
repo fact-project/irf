@@ -37,13 +37,7 @@ def test_irf_writing(predictions):
     energy_true = predictions['corsika_evt_header_total_energy'].values * u.GeV
     energy_prediction = predictions['gamma_energy_prediction'].values * u.GeV
 
-    hist, bins_e_true, bins_e_prediction = energy_dispersion(
-        energy_true,
-        energy_prediction,
-        n_bins=5,
-    )
-
-    t = energy_dispersion_to_irf_table(hist, bins_e_true, bins_e_prediction)
+    t = energy_dispersion_to_irf_table(energy_true, energy_prediction, n_bins=5)
     assert len(t) == 1
     assert t['MATRIX'].data.shape == (1, 2, 5, 5)
 
