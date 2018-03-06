@@ -76,12 +76,17 @@ def create_dl3_hdu(dl3):
 
 
 def create_index_hdu(runs):
-    obs_id = observation_id(runs.night, runs.run_id)
-    hdu_type = np.repeat('events', len(obs_id))
-    hdu_class = np.repeat('events', len(obs_id))
-    file_dir = np.repeat('./', len(obs_id))
-    file_name = file_names_from_runs(runs)
-    hdu_name = np.repeat('EVENTS', len(obs_id))
+
+    hdu_type = np.repeat(['events', 'aeff', 'edisp'], len(runs))
+    hdu_class = np.repeat(['events', 'aeff_2d', 'edisp_2d'], len(runs))
+    file_dir = np.repeat('./', 3 * len(runs))
+
+    f = file_names_from_runs(runs)
+    p = np.repeat('fact_irf.fits', 2 * len(runs))
+    file_name = np.append(f, p)
+    hdu_name = np.repeat(['EVENTS', 'EFFECTIVE AREA', 'ENERGY DISPERSION'], len(runs))
+
+    obs_id = np.tile(observation_id(runs.night, runs.run_id), 3)
 
     d = {
         'OBS_ID': obs_id,
@@ -90,13 +95,12 @@ def create_index_hdu(runs):
         'FILE_DIR': file_dir,
         'FILE_NAME': file_name,
         'HDU_NAME': hdu_name,
-
     }
 
     hdu = fits.table_to_hdu(Table(d))
     add_time_information_to_hdu(hdu)
     hdu.header['EUNIT'] = 'TeV'
-    hdu.header['EXTNAME'] = 'EVENTS'
+    hdu.header['EXTNAME'] = 'HDU_INDEX'
     hdu.header['CREATOR'] = 'FACT IRF'
     hdu.header['TELESCOP'] = 'FACT'
     return hdu
