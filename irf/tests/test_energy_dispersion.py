@@ -24,7 +24,7 @@ def test_dispersion(predictions):
     hist, bins_e_true, bins_e_prediction = energy_dispersion(
         energy_true,
         energy_prediction,
-        n_bins=5
+        bins=5
     )
 
     assert hist.shape == (5, 5)
@@ -36,12 +36,7 @@ def test_dispersion(predictions):
 def test_irf_writing(predictions):
     energy_true = predictions['corsika_evt_header_total_energy'].values * u.GeV
     energy_prediction = predictions['gamma_energy_prediction'].values * u.GeV
-
-    t = energy_dispersion_to_irf_table(energy_true, energy_prediction, n_bins=5)
+    event_offset = np.zeros_like(energy_prediction.value) * u.deg
+    t = energy_dispersion_to_irf_table(energy_true, energy_prediction, event_offset, n_bins=5, theta_bins=1)
     assert len(t) == 1
-    assert t['MATRIX'].data.shape == (1, 2, 5, 5)
-
-
-if __name__ == '__main__':
-    test_dispersion(predictions())
-    test_irf_writing(predictions())
+    assert t['MATRIX'].data.shape == (1, 1, 5, 5)

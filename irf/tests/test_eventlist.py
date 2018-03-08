@@ -1,5 +1,5 @@
 import os
-from irf.scripts import fact_dl3_to_fits
+from irf.scripts import fact_dl3_to_oga
 from click.testing import CliRunner
 
 FIXTURE_DIR = os.path.join(
@@ -15,7 +15,9 @@ def test_roundtrip():
     with tempfile.TemporaryDirectory() as tmpdir:
 
         output_path = tmpdir
-        input_path = os.path.join(FIXTURE_DIR, 'crab_dl3.hdf5')
+        dl3 = os.path.join(FIXTURE_DIR, 'crab_dl3.hdf5')
+        predictions = os.path.join(FIXTURE_DIR, 'gamma_predictions_dl2.hdf5')
+        showers = os.path.join(FIXTURE_DIR, 'showers.hdf5')
 
-        result = runner.invoke(fact_dl3_to_fits.main, [input_path, output_path, '--threshold', 0.6])
+        result = runner.invoke(fact_dl3_to_oga.main, [showers, predictions, dl3, output_path])
         assert result.exit_code == 0

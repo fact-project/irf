@@ -4,55 +4,62 @@ import datetime
 from astropy.table import Table
 
 
-@u.quantity_input(energy_true=u.GeV, energy_prediction=u.GeV)
-def energy_dispersion_to_irf_table(energy_true, energy_prediction, fov=4.5 * u.deg, n_bins=10):
+def make_energy_bins(energy_true, energy_prediction, bins):
+    e_min = min(
+        min(energy_true),
+        min(energy_prediction)
+    )
+
+    e_max = max(
+        max(energy_true),
+        max(energy_prediction)
+    )
+
+    low = np.log10(e_min.value)
+    high = np.log10(e_max.value)
+    bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
+
+    return bin_edges
+
+
+@u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV, event_offset=u.deg)
+def energy_dispersion_to_irf_table(energy_true, energy_prediction, event_offset, fov=4.5 * u.deg, n_bins=10, theta_bins=3):
     '''
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
     '''
 
-    e_min = min(
-        min(energy_true),
-        min(energy_prediction)
-    )
-    e_max = max(
-        max(energy_true),
-        max(energy_prediction)
-    )
-    bins_e_true = np.logspace(np.log10(e_min.value), np.log10(e_max.value), endpoint=True, num=n_bins + 1)
+    bins_e_true = make_energy_bins(energy_true, energy_prediction, n_bins)
+    bins_mu = np.linspace(0, 3, endpoint=True, num=n_bins + 1)
 
-    energy_lo = bins_e_true[np.newaxis, :-1] * energy_true.unit
-    energy_hi = bins_e_true[np.newaxis, 1:] * energy_true.unit
-
-    mu = (energy_prediction / energy_true).si.value
-    bins_mu = np.linspace(mu.min(), mu.max(), endpoint=True, num=n_bins + 1)
-
+    energy_lo = bins_e_true[np.newaxis, :-1]
+    energy_hi = bins_e_true[np.newaxis, 1:]
 
     migra_lo = bins_mu[np.newaxis, :-1]
     migra_hi = bins_mu[np.newaxis, 1:]
 
-    # the irf format does not specify that it needs at least 2 entries here.
-    # however the tools fail if theres just one bin.
-    # but the tools are shit anyways
-    theta_lo = np.array([0, fov.to('deg').value / 2], ndmin=2) * u.deg
-    theta_hi = np.array([fov.to('deg').value / 2, fov.to('deg').value], ndmin=2) * u.deg
+    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=theta_bins + 1)
+    theta_lo = theta_bin_edges[np.newaxis, :-1]
+    theta_hi = theta_bin_edges[np.newaxis, 1:]
 
-    disp, bins_e_true, bins_e_prediction = np.histogram2d(
-        energy_true.value,
-        mu,
-        bins=[bins_e_true, bins_mu],
-    )
-    e_disp = np.stack([disp, disp])[np.newaxis, :]
+    migras = []
+    for lower, upper in zip(theta_lo[0], theta_hi[0]):
+        m = (lower <= event_offset.value) & (event_offset.value < upper)
+
+        migra, bins_e_true, bins_mu = energy_migration(energy_true[m], energy_prediction[m], bins=n_bins)
+        migras.append(migra)
+
+    matrix = np.stack(migras)[np.newaxis, :]
 
     t = Table(
         {
-            'ENERG_LO': energy_lo,
-            'ENERG_HI': energy_hi,
+            'ENERG_LO': energy_lo * u.TeV,
+            'ENERG_HI': energy_hi * u.TeV,
             'MIGRA_LO': migra_lo,
             'MIGRA_HI': migra_hi,
-            'THETA_LO': theta_lo,
-            'THETA_HI': theta_hi,
-            'MATRIX': e_disp,
+            'THETA_LO': theta_lo * u.deg,
+            'THETA_HI': theta_hi * u.deg,
+            'MATRIX': matrix,
         }
     )
 
@@ -64,32 +71,41 @@ def energy_dispersion_to_irf_table(energy_true, energy_prediction, fov=4.5 * u.d
     t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
     t.meta['HDUCLAS4'] = 'EDISP_2D'
     t.meta['EXTNAME'] = 'ENERGY DISPERSION'
+
     return t
 
 
 
-@u.quantity_input(energy_true=u.GeV, energy_prediction=u.GeV)
-def energy_dispersion(energy_true, energy_prediction, n_bins=10):
 
-    e_min = min(
-        min(energy_true),
-        min(energy_prediction)
-    )
+@u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
+def energy_dispersion(energy_true, energy_prediction, bins=10):
 
-    e_max = max(
-        max(energy_true),
-        max(energy_prediction)
-    )
-
-    limits = e_min.value, e_max.value
-
-    bin_edges = np.logspace(np.log10(e_min.value), np.log10(e_max.value), endpoint=True, num=n_bins + 1)
+    if np.isscalar(bins):
+        bins = make_energy_bins(energy_true, energy_prediction, bins)
 
     hist, bins_e_true, bins_e_prediction = np.histogram2d(
         energy_true.value,
         energy_prediction,
-        bins=bin_edges,
-        range=[limits, limits],
+        bins=bins,
     )
 
-    return hist, bins_e_true * e_min.unit, bins_e_prediction * e_min.unit
+    return hist, bins_e_true * energy_true.unit, bins_e_prediction * energy_true.unit
+
+
+@u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
+def energy_migration(energy_true, energy_prediction, bins=10):
+
+    if np.isscalar(bins):
+        bins = make_energy_bins(energy_true, energy_prediction, bins)
+
+    mu = (energy_prediction / energy_true).si.value
+
+    bins_mu = np.linspace(0, 3, endpoint=True, num=len(bins))
+
+    migra, bins_e_true, bins_mu = np.histogram2d(
+        energy_true.value,
+        mu,
+        bins=[bins, bins_mu],
+    )
+
+    return migra, bins * energy_true.unit, bins_mu

@@ -27,7 +27,7 @@ def create_primary_hdu():
     header = fits.Header()
 
     header['OBSERVER'] = 'The non-insane FACT guys '
-    header['COMMENT'] = 'FACT EventList. Very preliminary'
+    header['COMMENT'] = 'FACT OGA. Very preliminary'
     header['COMMENT'] = 'See https://gamma-astro-data-formats.readthedocs.io/en/latest/'
     header['COMMENT'] = 'This file was created by https://github.com/fact-project/irf'
     header['COMMENT'] = 'See our full analysis here https://github.com/fact-project/open_crab_sample_analysis'
@@ -75,14 +75,14 @@ def create_dl3_hdu(dl3):
     return hdu
 
 
-def create_index_hdu(runs):
+def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
 
     hdu_type = np.repeat(['events', 'aeff', 'edisp'], len(runs))
     hdu_class = np.repeat(['events', 'aeff_2d', 'edisp_2d'], len(runs))
     file_dir = np.repeat('./', 3 * len(runs))
 
     f = file_names_from_runs(runs)
-    p = np.repeat('fact_irf.fits', 2 * len(runs))
+    p = np.repeat(path_to_irf_file, 2 * len(runs))
     file_name = np.append(f, p)
     hdu_name = np.repeat(['EVENTS', 'EFFECTIVE AREA', 'ENERGY DISPERSION'], len(runs))
 

@@ -5,34 +5,54 @@ from astropy.table import Table
 import datetime
 
 
-@u.quantity_input(fov=u.deg)
-def collection_area_to_irf_table(area, bin_center, bin_width, fov=4.5 * u.deg):
+@u.quantity_input(shower_energy=u.TeV, true_event_energy=u.TeV, event_offset=u.deg, fov=u.deg, impact=u.m)
+def collection_area_to_irf_table(
+    shower_energy,
+    true_event_energy,
+    event_offset,
+    bins=10,
+    impact=270 * u.m,
+    sample_fraction=1.0,
+    fov=4.5 * u.deg
+):
     '''
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
     '''
+    low = np.log10(shower_energy.min().value)
+    high = np.log10(shower_energy.max().value)
+    bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
 
-    energy_lo = 10**(bin_center - bin_width / 2)
-    energy_hi = 10**(bin_center + bin_width / 2)
+    energy_lo = bin_edges[np.newaxis, :-1]
+    energy_hi = bin_edges[np.newaxis, 1:]
 
-    energy_lo = energy_lo[np.newaxis, :] * u.GeV
-    energy_hi = energy_hi[np.newaxis, :] * u.GeV
+    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=4)
+    theta_lo = theta_bin_edges[np.newaxis, :-1]
+    theta_hi = theta_bin_edges[np.newaxis, 1:]
 
-    # the irf format does not specify that it needs at least 2 entries here.
-    # however the tools fail if theres just one bin.
-    # but the tools are shit anyways
-    theta_lo = np.array([0, fov.to('deg').value / 2], ndmin=2) * u.deg
-    theta_hi = np.array([fov.to('deg').value / 2, fov.to('deg').value], ndmin=2) * u.deg
+    areas = []
+    for lower, upper in zip(theta_lo[0], theta_hi[0]):
+        m = (lower <= event_offset.value) & (event_offset.value < upper)
+        r = collection_area(
+            shower_energy,
+            true_event_energy[m],
+            impact=impact,
+            bins=bin_edges,
+            sample_fraction=1,
+        )
 
-    area = np.vstack([area.value, area.value])
+        area, bin_center, bin_width, lower_conf, upper_conf = r
+        areas.append(area.value)
+
+    area = np.vstack(areas)
     area = area[np.newaxis, :] * u.m**2
 
     t = Table(
         {
-            'ENERG_LO': energy_lo,
-            'ENERG_HI': energy_hi,
-            'THETA_LO': theta_lo,
-            'THETA_HI': theta_hi,
+            'ENERG_LO': energy_lo * u.TeV,
+            'ENERG_HI': energy_hi * u.TeV,
+            'THETA_LO': theta_lo * u.deg,
+            'THETA_HI': theta_hi * u.deg,
             'EFFAREA': area,
         }
     )
@@ -53,7 +73,6 @@ def histograms(
         selected_events,
         bins,
         range=None,
-        log=True,
 ):
     '''
     Create histograms in the given bins for two vectors.
@@ -73,10 +92,6 @@ def histograms(
 
     returns: hist_all, hist_selected,  bin_edges
     '''
-
-    if log is True:
-        all_events = np.log10(all_events)
-        selected_events = np.log10(selected_events)
 
     hist_all, bin_edges = np.histogram(
         all_events,
@@ -127,7 +142,6 @@ def collection_area(
         selected_events,
         bins,
         range=range,
-        log=log
     )
 
     hist_selected = (hist_selected / sample_fraction).astype(int)
