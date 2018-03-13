@@ -26,7 +26,7 @@ def predictions():
 def test_units(showers, predictions):
     assert len(showers) > 0
     assert len(predictions) > 0
-    predictions['energy'] = predictions['corsika_evt_header_total_energy']
+    predictions['energy'] = predictions['corsika_event_header_total_energy']
     r = collection_area(
         showers.energy * u.TeV, predictions.energy * u.TeV, bins=10, impact=270 * u.m)
     area = r[0]
@@ -34,12 +34,7 @@ def test_units(showers, predictions):
 
 
 def test_irf_writing(showers, predictions, tmpdir):
-    predictions['energy'] = predictions['corsika_evt_header_total_energy']
-
-    shower_energy = (showers.energy.values * u.GeV).to('TeV')
-    true_event_energy = (predictions.corsika_evt_header_total_energy.values * u.GeV).to('TeV')
-    offsets = np.ones_like(true_event_energy.value) * u.deg
-    t = collection_area_to_irf_table(shower_energy, true_event_energy, offsets, bins=20)
+    t = collection_area_to_irf_table(showers, predictions, bins=20)
     assert t['ENERG_LO'].shape == (1, 20)
     assert t['ENERG_LO'].unit == u.TeV
     assert t['EFFAREA'].shape == (1, 3, 20)

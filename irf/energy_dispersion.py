@@ -2,6 +2,7 @@ import astropy.units as u
 import numpy as np
 import datetime
 from astropy.table import Table
+from irf.oga import calculate_fov_offset
 
 
 def make_energy_bins(energy_true, energy_prediction, bins):
@@ -23,13 +24,17 @@ def make_energy_bins(energy_true, energy_prediction, bins):
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV, event_offset=u.deg)
-def energy_dispersion_to_irf_table(energy_true, energy_prediction, event_offset, fov=4.5 * u.deg, n_bins=10, theta_bins=3):
+def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, n_bins=10, theta_bins=3):
     '''
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
     '''
 
-    bins_e_true = make_energy_bins(energy_true, energy_prediction, n_bins)
+    true_event_energy = (selected_events.corsika_event_header_total_energy.values * u.GeV).to('TeV')
+    predicted_event_energy = (selected_events.gamma_energy_prediction.values * u.GeV).to('TeV')
+    event_offset = calculate_fov_offset(selected_events)
+
+    bins_e_true = make_energy_bins(true_event_energy, predicted_event_energy, n_bins)
     bins_mu = np.linspace(0, 3, endpoint=True, num=n_bins + 1)
 
     energy_lo = bins_e_true[np.newaxis, :-1]
@@ -45,8 +50,7 @@ def energy_dispersion_to_irf_table(energy_true, energy_prediction, event_offset,
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
         m = (lower <= event_offset.value) & (event_offset.value < upper)
-
-        migra, bins_e_true, bins_mu = energy_migration(energy_true[m], energy_prediction[m], bins=n_bins)
+        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins=n_bins)
         migras.append(migra)
 
     matrix = np.stack(migras)[np.newaxis, :]

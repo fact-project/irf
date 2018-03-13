@@ -5,31 +5,19 @@ import os
 from astropy.io import fits
 from tqdm import tqdm
 import pandas as pd
-import astropy.units as u
 import numpy as np
-from astropy.coordinates.angle_utilities import angular_separation
 
 
 columns_to_read = [
     'theta_deg',
-    'corsika_evt_header_total_energy',
+    'corsika_event_header_total_energy',
     'gamma_prediction',
     'gamma_energy_prediction',
-    'zd_pointing',
-    'az_pointing',
-    'az_source_calc',
-    'zd_source_calc',
+    'aux_pointing_position_zd',
+    'aux_pointing_position_az',
+    'source_position_az',
+    'source_position_zd',
 ]
-
-
-def calculate_fov_offset(df):
-    pointing_lat = (90 - df.zd_pointing.values) * u.deg
-    pointing_lon = df.az_pointing.values * u.deg
-
-    source_lat = (90 - df.zd_source_calc.values) * u.deg
-    source_lon = df.az_source_calc.values * u.deg
-
-    return angular_separation(pointing_lon, pointing_lat, source_lon, source_lat).to('deg')
 
 
 @click.command()
@@ -70,18 +58,15 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     predictions = fact.io.read_data(predictions, key='events', columns=columns_to_read)
     q = f'gamma_prediction >= {prediction_threshold} & theta_deg <= {np.sqrt(theta_square_cut)}'
     selected_events = predictions.query(q)
-    
+
+
     write_irf(output_directory, showers, selected_events)
 
 
-def write_irf(output_directory, showers, selected_events, irf_path='fact_irf.fits'):
-    shower_energy = (showers.energy.values * u.GeV).to('TeV')
-    true_event_energy = (selected_events.corsika_evt_header_total_energy.values * u.GeV).to('TeV')
-    predicted_event_energy = (selected_events.gamma_energy_prediction.values * u.GeV).to('TeV')
-    event_offset = calculate_fov_offset(selected_events)
+def write_irf(output_directory, corsika_showers, selected_events, irf_path='fact_irf.fits'):
 
-    collection_table = collection_area_to_irf_table(shower_energy, true_event_energy, event_offset, bins=20)
-    e_disp_table = energy_dispersion_to_irf_table(true_event_energy, predicted_event_energy, event_offset, n_bins=60)
+    collection_table = collection_area_to_irf_table(corsika_showers, selected_events, bins=20)
+    e_disp_table = energy_dispersion_to_irf_table(selected_events, n_bins=60)
 
     primary_hdu = oga.create_primary_hdu()
     collection_hdu = fits.table_to_hdu(collection_table)

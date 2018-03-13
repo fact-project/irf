@@ -6,8 +6,29 @@ import pandas as pd
 from astropy.table import Table
 from astropy.time import Time
 import numpy as np
+from astropy.coordinates.angle_utilities import angular_separation
+
+
 
 MJDREF = 55835  # MJD sometime near FACT's first light. 2011-10-01T00:00:00 UTC
+
+
+
+
+def calculate_fov_offset(df):
+    pointing_lat = (90 - df.aux_pointing_position_zd.values) * u.deg
+    pointing_lon = df.aux_pointing_position_az.values * u.deg
+
+    source_lat = (90 - df.source_position_zd.values) * u.deg
+    source_lon = df.source_position_az.values * u.deg
+
+    return angular_separation(pointing_lon, pointing_lat, source_lon, source_lat).to('deg')
+
+
+def corsika_to_astropy_coordinates(showers):
+    az = np.rad2deg(-np.pi + showers.phi.values + -0.12217305)
+    zd = np.rad2deg(showers.theta.values)
+    return az, zd
 
 
 def observation_id(night, run):

@@ -1,15 +1,17 @@
 import numpy as np
+
 from astropy.stats import binom_conf_interval
 import astropy.units as u
 from astropy.table import Table
+
+from irf.oga import calculate_fov_offset
 import datetime
 
 
-@u.quantity_input(shower_energy=u.TeV, true_event_energy=u.TeV, event_offset=u.deg, fov=u.deg, impact=u.m)
+@u.quantity_input(fov=u.deg, impact=u.m)
 def collection_area_to_irf_table(
-    shower_energy,
-    true_event_energy,
-    event_offset,
+    corsika_showers,
+    selected_diffuse_gammas,
     bins=10,
     impact=270 * u.m,
     sample_fraction=1.0,
@@ -19,6 +21,11 @@ def collection_area_to_irf_table(
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
     '''
+
+    shower_energy = (corsika_showers.energy.values * u.GeV).to('TeV')
+    true_event_energy = (selected_diffuse_gammas.corsika_event_header_total_energy.values * u.GeV).to('TeV')
+    offset = calculate_fov_offset(selected_diffuse_gammas)
+
     low = np.log10(shower_energy.min().value)
     high = np.log10(shower_energy.max().value)
     bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
@@ -32,13 +39,15 @@ def collection_area_to_irf_table(
 
     areas = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= event_offset.value) & (event_offset.value < upper)
+        m = (lower <= offset.value) & (offset.value < upper)
+        f = (upper**2 - lower**2) / ((fov.value / 2) ** 2)
+
         r = collection_area(
             shower_energy,
             true_event_energy[m],
             impact=impact,
             bins=bin_edges,
-            sample_fraction=1,
+            sample_fraction=f,
         )
 
         area, bin_center, bin_width, lower_conf, upper_conf = r
