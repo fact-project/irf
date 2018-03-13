@@ -9,13 +9,15 @@ import numpy as np
 from astropy.coordinates.angle_utilities import angular_separation
 
 
-
+# the timestamps in the fits files need a reference MJD time according to an (ogip?) standard.
 MJDREF = 55835  # MJD sometime near FACT's first light. 2011-10-01T00:00:00 UTC
 
 
-
-
 def calculate_fov_offset(df):
+    '''
+    Calculate the `offset` aka the `angular_separation` between the pointing and
+    the source position.
+    '''
     pointing_lat = (90 - df.aux_pointing_position_zd.values) * u.deg
     pointing_lon = df.aux_pointing_position_az.values * u.deg
 
@@ -25,26 +27,29 @@ def calculate_fov_offset(df):
     return angular_separation(pointing_lon, pointing_lat, source_lon, source_lat).to('deg')
 
 
-def corsika_to_astropy_coordinates(showers):
-    az = np.rad2deg(-np.pi + showers.phi.values + -0.12217305)
-    zd = np.rad2deg(showers.theta.values)
-    return az, zd
-
-
 def observation_id(night, run):
+    '''
+    Creates a single integer from the night and run numbers.
+    '''
     obs_id = (night * 1E3 + run).values
     return obs_id.astype(int)
 
 
-def file_names_from_runs(runs):
+def file_names_from_run_table(runs):
+    '''
+    Creates a file name from the `run_id` and `night` entries in the runs table.
+    returns a list of filenames of the form <night>_<run_id>_dl3.fits
+    '''
     run_ids = runs.run_id.values.astype(str)
     nights = runs.night.values.astype(str)
     names = [f'{n}_{r}_dl3.fits' for n, r in zip(nights, run_ids)]
     return names
 
 
-
 def create_primary_hdu():
+    '''
+    Creates a primary fits HDU common to all FACT fits files.
+    '''
     header = fits.Header()
 
     header['OBSERVER'] = 'The non-insane FACT guys '
@@ -62,9 +67,9 @@ def create_primary_hdu():
 def create_dl3_hdu(dl3):
     '''
     Takes a pandas dataframe which contains the DL3 Information and creates an hdu
-    accroding to the standard found here:
+    according to the standard found here:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/events/events.html
-    return a fits hdu object
+    returns a fits hdu object
     '''
     # the format expects to see some event id. I just take the index
     event_id = dl3.index
@@ -97,12 +102,20 @@ def create_dl3_hdu(dl3):
 
 
 def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
+    '''
+    The index hdu contains the paths and filenames to other fits files containing
+    EVENTS, EFFECTIVE AREA, ENERGY DISPERSION.
+
+    See http://gamma-astro-data-formats.readthedocs.io/en/latest/data_storage/hdu_index/index.html
+
+    returns a fits hdu object
+    '''
 
     hdu_type = np.repeat(['events', 'aeff', 'edisp'], len(runs))
     hdu_class = np.repeat(['events', 'aeff_2d', 'edisp_2d'], len(runs))
     file_dir = np.repeat('./', 3 * len(runs))
 
-    f = file_names_from_runs(runs)
+    f = file_names_from_run_table(runs)
     p = np.repeat(path_to_irf_file, 2 * len(runs))
     file_name = np.append(f, p)
     hdu_name = np.repeat(['EVENTS', 'EFFECTIVE AREA', 'ENERGY DISPERSION'], len(runs))
@@ -125,9 +138,6 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
     hdu.header['CREATOR'] = 'FACT IRF'
     hdu.header['TELESCOP'] = 'FACT'
     return hdu
-
-
-
 
 
 def create_observation_index_hdu(runs):
@@ -209,6 +219,11 @@ def create_observation_index_hdu(runs):
 
 
 def add_time_information_to_hdu(hdu):
+    '''
+    Takes an hdu opbject and adds information about FACTs time referecne to it.
+    These values are constants like the location of the telescope and its altitude ASL.
+    As well as the TIMESYS keyword which is always 'utc'.
+    '''
     hdu_header = hdu.header
     hdu_header['MJDREFI'] = MJDREF
     hdu_header['MJDREFF'] = 0
