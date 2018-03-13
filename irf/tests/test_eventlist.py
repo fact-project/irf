@@ -15,7 +15,7 @@ def test_roundtrip():
     with tempfile.TemporaryDirectory() as tmpdir:
 
         output_path = tmpdir
-        dl3 = os.path.join(FIXTURE_DIR, 'crab_dl3.hdf5')
+        dl3 = os.path.join(FIXTURE_DIR, 'crab_dl3_small.hdf5')
         predictions = os.path.join(FIXTURE_DIR, 'gamma_predictions_dl2.hdf5')
         showers = os.path.join(FIXTURE_DIR, 'showers.hdf5')
 
