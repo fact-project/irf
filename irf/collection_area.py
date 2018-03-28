@@ -4,8 +4,11 @@ from astropy.stats import binom_conf_interval
 import astropy.units as u
 from astropy.table import Table
 
+from scipy.ndimage.filters import gaussian_filter
+
 from irf.oga import calculate_fov_offset
 import datetime
+
 
 
 @u.quantity_input(fov=u.deg, impact=u.m)
@@ -26,21 +29,26 @@ def collection_area_to_irf_table(
     true_event_energy = (selected_diffuse_gammas.corsika_event_header_total_energy.values * u.GeV).to('TeV')
     offset = calculate_fov_offset(selected_diffuse_gammas)
 
-    low = np.log10(shower_energy.min().value)
-    high = np.log10(shower_energy.max().value)
-    bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
+    if np.isscalar(bins):
+        low = np.log10(shower_energy.min().value)
+        high = np.log10(shower_energy.max().value)
+        bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
+    else:
+        low = bins.min()
+        high = bins.max()
+        bin_edges = bins
 
     energy_lo = bin_edges[np.newaxis, :-1]
     energy_hi = bin_edges[np.newaxis, 1:]
 
-    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=4)
+    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=5)
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
 
     areas = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
         m = (lower <= offset.value) & (offset.value < upper)
-        f = (upper**2 - lower**2) / ((fov.value / 2) ** 2)
+        f = (upper**2 - lower**2) / ((fov.value / 2) ** 2) * sample_fraction
 
         r = collection_area(
             shower_energy,
@@ -48,6 +56,7 @@ def collection_area_to_irf_table(
             impact=impact,
             bins=bin_edges,
             sample_fraction=f,
+            smooth=True,
         )
 
         area, bin_center, bin_width, lower_conf, upper_conf = r
@@ -94,18 +103,12 @@ def histograms(
         Quantity which should be histogrammed for all selected events
     bins: int or array-like
         either number of bins or bin edges for the histogram
-    range: (float, float)
-        The lower and upper range of the bins
-    log: bool
-        flag indicating whether log10 should be applied to the values.
-
     returns: hist_all, hist_selected,  bin_edges
     '''
 
     hist_all, bin_edges = np.histogram(
         all_events,
         bins=bins,
-        range=range,
     )
 
     hist_selected, _ = np.histogram(
@@ -122,9 +125,8 @@ def collection_area(
         selected_events,
         impact,
         bins,
-        range=None,
-        log=True,
         sample_fraction=1.0,
+        smooth=False,
 ):
     '''
     Calculate the collection area for the given events.
@@ -139,8 +141,6 @@ def collection_area(
         either number of bins or bin edges for the histogram
     impact: astropy Quantity of type length
         The maximal simulated impact parameter
-    log: bool
-        flag indicating whether log10 should be applied to the quantity.
     sample_fraction: float
         The fraction of `all_events` that was analysed
         to create `selected_events`
@@ -150,7 +150,6 @@ def collection_area(
         all_events,
         selected_events,
         bins,
-        range=range,
     )
 
     hist_selected = (hist_selected / sample_fraction).astype(int)
@@ -167,6 +166,11 @@ def collection_area(
     lower_conf = lower_conf * np.pi * impact**2
     upper_conf = upper_conf * np.pi * impact**2
 
-    area = hist_selected / hist_all * np.pi * impact**2
+    area = (hist_selected / hist_all) * np.pi * impact**2
+
+
+    if smooth:
+        a = area.copy()
+        area = gaussian_filter(a.value, sigma=1.25, ) * area.unit
 
     return area, bin_center, bin_width, lower_conf, upper_conf

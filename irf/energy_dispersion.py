@@ -3,6 +3,7 @@ import numpy as np
 import datetime
 from astropy.table import Table
 from irf.oga import calculate_fov_offset
+from scipy.ndimage.filters import gaussian_filter
 
 
 def make_energy_bins(energy_true, energy_prediction, bins):
@@ -24,7 +25,7 @@ def make_energy_bins(energy_true, energy_prediction, bins):
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV, event_offset=u.deg)
-def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, n_bins=10, theta_bins=3):
+def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, theta_bins=3):
     '''
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
@@ -34,8 +35,12 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, n_bins=10, 
     predicted_event_energy = (selected_events.gamma_energy_prediction.values * u.GeV).to('TeV')
     event_offset = calculate_fov_offset(selected_events)
 
-    bins_e_true = make_energy_bins(true_event_energy, predicted_event_energy, n_bins)
-    bins_mu = np.linspace(0, 3, endpoint=True, num=n_bins + 1)
+    if np.isscalar(bins):
+        bins_e_true = make_energy_bins(true_event_energy, predicted_event_energy, bins)
+    else:
+        bins_e_true = bins
+
+    bins_mu = np.linspace(0, 3, endpoint=True, num=len(bins))
 
     energy_lo = bins_e_true[np.newaxis, :-1]
     energy_hi = bins_e_true[np.newaxis, 1:]
@@ -50,8 +55,8 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, n_bins=10, 
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
         m = (lower <= event_offset.value) & (event_offset.value < upper)
-        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins=n_bins)
-        migras.append(migra)
+        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins=bins_e_true, normalize=True, smooth=True)
+        migras.append(migra.T)
 
     matrix = np.stack(migras)[np.newaxis, :]
 
@@ -82,7 +87,7 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, n_bins=10, 
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
-def energy_dispersion(energy_true, energy_prediction, bins=10):
+def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, smooth=False):
 
     if np.isscalar(bins):
         bins = make_energy_bins(energy_true, energy_prediction, bins)
@@ -93,23 +98,40 @@ def energy_dispersion(energy_true, energy_prediction, bins=10):
         bins=bins,
     )
 
+    if normalize:
+        h = hist.T
+        h = h / h.sum(axis=0)
+        hist = np.nan_to_num(h).T
+
+
+    if smooth:
+        hist = gaussian_filter(hist, sigma=1.25, )
+
     return hist, bins_e_true * energy_true.unit, bins_e_prediction * energy_true.unit
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
-def energy_migration(energy_true, energy_prediction, bins=10):
+def energy_migration(energy_true, energy_prediction, bins=10, normalize=True, smooth=False):
 
     if np.isscalar(bins):
         bins = make_energy_bins(energy_true, energy_prediction, bins)
 
-    mu = (energy_prediction / energy_true).si.value
+    migra = (energy_prediction / energy_true).si.value
 
-    bins_mu = np.linspace(0, 3, endpoint=True, num=len(bins))
+    bins_migra = np.linspace(0, 3, endpoint=True, num=len(bins))
 
-    migra, bins_e_true, bins_mu = np.histogram2d(
+    hist, bins_e_true, bins_migra = np.histogram2d(
         energy_true.value,
-        mu,
-        bins=[bins, bins_mu],
+        migra,
+        bins=[bins, bins_migra],
     )
 
-    return migra, bins * energy_true.unit, bins_mu
+    if normalize:
+        h = hist.T
+        h = h / h.sum(axis=0)
+        hist = np.nan_to_num(h).T
+
+    if smooth:
+        hist = gaussian_filter(hist, sigma=1.25, )
+
+    return hist, bins * energy_true.unit, bins_migra

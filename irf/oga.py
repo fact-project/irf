@@ -13,6 +13,21 @@ from astropy.coordinates.angle_utilities import angular_separation
 MJDREF = 55835  # MJD sometime near FACT's first light. 2011-10-01T00:00:00 UTC
 
 
+def extend_hdu_header(header, values_dict):
+    '''
+    extend existing hdu header by values in a dict
+    '''
+    for k, v in values_dict.items():
+        if not np.isscalar(v):
+            if len(v) > 1:
+                raise TypeError('Can only add scalar values to a header keyword')
+            v = v[0]
+        try:
+            header[k] = v.value
+        except AttributeError:
+            header[k] = v
+
+
 def calculate_fov_offset(df):
     '''
     Calculate the `offset` aka the `angular_separation` between the pointing and
@@ -64,7 +79,7 @@ def create_primary_hdu():
     return fits.PrimaryHDU(header=header)
 
 
-def create_dl3_hdu(dl3):
+def create_dl3_hdu(dl3, run):
     '''
     Takes a pandas dataframe which contains the DL3 Information and creates an hdu
     according to the standard found here:
@@ -98,6 +113,9 @@ def create_dl3_hdu(dl3):
     hdu.header['EXTNAME'] = 'EVENTS'
     hdu.header['CREATOR'] = 'FACT IRF'
     hdu.header['TELESCOP'] = 'FACT'
+    d = ontime_info_from_runs(run)
+    extend_hdu_header(hdu.header, d)
+
     return hdu
 
 
@@ -140,22 +158,12 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
     return hdu
 
 
-def create_observation_index_hdu(runs):
-    '''
-    Takes a pandas dataframe which contains the information about runs.
-    Take all the mandatory keywords found here:
-    http://gamma-astro-data-formats.readthedocs.io/en/latest/data_storage/obs_index/index.html
-    returns a fits hdu object
-    '''
-    obs_id = observation_id(runs.night, runs.run_id)
-    ra_pnt = runs.right_ascension.values * u.hourangle
-    ra_pnt = ra_pnt.to('deg')
+def ontime_info_from_runs(runs):
 
-    dec_pnt = runs.declination.values * u.deg
+    # to make this work for a single run (a pandas series) convert to table
+    if isinstance(runs, pd.core.series.Series):
+        runs = runs.to_frame().T
 
-    zen_pnt = runs.zenith.values * u.deg
-    alt_pnt = (90 - runs.zenith.values) * u.deg
-    az_pnt = runs.azimuth.values * u.deg
 
     if not is_datetime64_any_dtype(runs.run_start):
         runs.run_start = pd.to_datetime(runs.run_start, infer_datetime_format=True)
@@ -186,6 +194,37 @@ def create_observation_index_hdu(runs):
     time_obs = runs.run_start.dt.strftime('%H:%M:%S').values.astype(np.str)
     time_end = runs.run_stop.dt.strftime('%H:%M:%S').values.astype(np.str)
 
+    return {
+        'ONTIME': ontime,
+        'LIVETIME': livetime,
+        'DEADC': deadc,
+        'TSTART': tstart,
+        'TSTOP': tstop,
+        'DATE-OBS': date_obs,
+        'TIME-OBS': time_obs,
+        'DATE-END': date_end,
+        'TIME-END': time_end,
+    }
+
+
+def create_observation_index_hdu(runs):
+    '''
+    Takes a pandas dataframe which contains the information about runs.
+    Take all the mandatory keywords found here:
+    http://gamma-astro-data-formats.readthedocs.io/en/latest/data_storage/obs_index/index.html
+    returns a fits hdu object
+    '''
+    obs_id = observation_id(runs.night, runs.run_id)
+    ra_pnt = runs.right_ascension.values * u.hourangle
+    ra_pnt = ra_pnt.to('deg')
+
+    dec_pnt = runs.declination.values * u.deg
+
+    zen_pnt = runs.zenith.values * u.deg
+    alt_pnt = (90 - runs.zenith.values) * u.deg
+    az_pnt = runs.azimuth.values * u.deg
+
+
     n_tels = np.ones_like(obs_id)
     tellist = np.ones_like(obs_id).astype(np.str)
     quality = np.zeros_like(obs_id)
@@ -197,18 +236,10 @@ def create_observation_index_hdu(runs):
         'ZEN_PNT': zen_pnt,
         'ALT_PNT': alt_pnt,
         'AZ_PNT': az_pnt,
-        'ONTIME': ontime,
-        'LIVETIME': livetime,
-        'DEADC': deadc,
-        'TSTART': tstart,
-        'TSTOP': tstop,
-        'DATE-OBS': date_obs,
-        'TIME-OBS': time_obs,
-        'DATE-END': date_end,
-        'TIME-END': time_end,
         'N_TELS': n_tels,
         'TELLIST': tellist,
         'QUALITY': quality,
+        **ontime_info_from_runs(runs)
     }
 
     hdu = fits.table_to_hdu(Table(d))
@@ -220,7 +251,7 @@ def create_observation_index_hdu(runs):
 
 def add_time_information_to_hdu(hdu):
     '''
-    Takes an hdu opbject and adds information about FACTs time referecne to it.
+    Takes an hdu object and adds information about FACTs time referecne to it.
     These values are constants like the location of the telescope and its altitude ASL.
     As well as the TIMESYS keyword which is always 'utc'.
     '''
