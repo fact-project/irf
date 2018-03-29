@@ -55,7 +55,7 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     dl3_events = fact.io.read_h5py(dl3, key='events')
     gamma_events = fact.io.read_data(predictions, key='events', columns=columns_to_read)
 
-    energy_bins = np.logspace(np.log10(0.5), np.log10(30), endpoint=True, num=24 + 1)
+    energy_bins = np.logspace(np.log10(0.2), np.log10(50), endpoint=True, num=25 + 1)
 
     diagnostic_plots(gamma_events, dl3_events, energy_bins, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
     plt.savefig(os.path.join(output_directory, 'plots.png'))
