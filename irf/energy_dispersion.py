@@ -40,7 +40,7 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, th
     else:
         bins_e_true = bins
 
-    bins_mu = np.linspace(0, 3, endpoint=True, num=len(bins))
+    bins_mu = np.linspace(0, 3, endpoint=True, num=len(bins_e_true))
 
     energy_lo = bins_e_true[np.newaxis, :-1]
     energy_hi = bins_e_true[np.newaxis, 1:]

@@ -34,6 +34,6 @@ def test_dispersion(predictions):
 
 
 def test_irf_writing(predictions):
-    t = energy_dispersion_to_irf_table(predictions, n_bins=5, theta_bins=1)
+    t = energy_dispersion_to_irf_table(predictions, bins=5, theta_bins=1)
     assert len(t) == 1
     assert t['MATRIX'].data.shape == (1, 1, 5, 5)
