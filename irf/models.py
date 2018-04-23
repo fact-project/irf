@@ -262,11 +262,11 @@ class MCSpectrum(Spectrum):
             The solid angle over which the particles were created.
             This is necessary for extended sources like the cosmic ray spectrum
         '''
-        self.e_min = e_min
-        self.e_max = e_max
+        self.e_min = e_min.to('TeV')
+        self.e_max = e_max.to('TeV')
         self.total_showers_simulated = total_showers_simulated
         self.index = index
-        self.generation_area = generation_area
+        self.generation_area = generation_area.to('m^2')
         self.generator_solid_angle = generator_solid_angle
         self.normalization_constant = 1 / (u.TeV * u.m**2 * u.s)
         if generator_solid_angle is not None and generator_solid_angle > 0 * u.deg:
