@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u
 from matplotlib.colors import PowerNorm
+from irf.models import MCSpectrum
 
 
 columns_to_read = [
@@ -26,10 +27,6 @@ columns_to_read = [
 
 @click.command()
 @click.argument(
-    'showers',
-    type=click.Path(file_okay=True, dir_okay=False),
-)
-@click.argument(
     'predictions',
     type=click.Path(file_okay=True, dir_okay=False),
 )
@@ -43,19 +40,19 @@ columns_to_read = [
 )
 @click.option('-c', '--prediction_threshold', type=click.FLOAT, default=0.85)
 @click.option('-t', '--theta_square_cut', type=click.FLOAT, default=0.02)
-@click.option(
-    '-m', '--max_scat',
-    default=270,
-    help='Maximum scatter radius (meter) used during corsika simulations of gammas.',
-)
-def main(showers, predictions, dl3, output_directory, prediction_threshold, theta_square_cut, max_scat):
+def main(predictions, dl3, output_directory, prediction_threshold, theta_square_cut):
 
     os.makedirs(output_directory, exist_ok=True)
 
     dl3_events = fact.io.read_h5py(dl3, key='events')
     gamma_events = fact.io.read_data(predictions, key='events', columns=columns_to_read)
 
-    energy_bins = np.logspace(np.log10(0.2), np.log10(50), endpoint=True, num=25 + 1)
+    energy_bins = np.logspace(np.log10(0.2), np.log10(50), endpoint=True, num=25 + 1) * u.TeV
+
+    # prodcution settings for diffuse gammas (gustav plus werner)
+    n_showers = 12E6
+    area = (270 * u.m)**2 * np.pi
+    mc_production_spectrum = MCSpectrum(200 * u.GeV, 50 * u.TeV, n_showers, area, index=-2.7)
 
     diagnostic_plots(gamma_events, dl3_events, energy_bins, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
     plt.savefig(os.path.join(output_directory, 'plots.png'))
@@ -64,8 +61,7 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     runs = fact.io.read_h5py(dl3, key='runs')
     write_dl3(output_directory, gammalike_data_events, runs)
 
-    showers = fact.io.read_data(showers, key='showers')
-    write_irf(output_directory, showers, gamma_events, prediction_threshold, theta_square_cut, energy_bins)
+    write_irf(output_directory, mc_production_spectrum, gamma_events, prediction_threshold, theta_square_cut, energy_bins)
 
 
 def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, prediction_threshold):
@@ -103,12 +99,12 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
     ax3.hist(predicted_event_energy_crab, bins=bins, histtype='step', label='predicted energies crab data on region', color='0.2', lw=2, density=True)
     ax3.set_xscale('log')
     ax3.set_yscale('log')
-    ax3.set_xlim([bins.min(), bins.max()])
+    ax3.set_xlim([bins.min().value, bins.max().value])
 
 
 
     ax1 = bottom[0]
-    hist, bins_e_true, bins_e_prediction = energy_dispersion(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smooth=True)
+    hist, bins_e_true, bins_e_prediction = energy_dispersion(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smoothing=1.25)
     im = ax1.pcolormesh(bins_e_true, bins_e_prediction, hist.T, cmap='GnBu', norm=PowerNorm(0.5))
     ax1.plot(ax1.get_xlim(), ax1.get_ylim(), ls='--', color='darkgray')
     fig.colorbar(im, ax=ax1)
@@ -118,7 +114,7 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
     ax1.set_ylabel(r'$E_{\mathrm{Reco}} /  \mathrm{TeV}$')
 
     ax2 = bottom[1]
-    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smooth=True)
+    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smoothing=1.25)
     im = ax2.pcolormesh(bins_e_true, bins_mu, hist.T, cmap='GnBu', norm=PowerNorm(0.5))
     fig.colorbar(im, ax=ax2)
     ax2.set_xscale('log')
@@ -134,11 +130,32 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
 
 
 
-def write_irf(output_directory, corsika_showers, gamma_events, prediction_threshold, theta_square_cut, energy_bins, irf_path='fact_irf.fits'):
+def write_irf(output_directory, mc_production_spectrum, gamma_events, prediction_threshold, theta_square_cut, energy_bins, irf_path='fact_irf.fits'):
+
     q = f'theta_deg <= {np.sqrt(theta_square_cut)} & gamma_prediction >= {prediction_threshold}'
     selected_gamma_events = gamma_events.query(q).copy()
-    collection_table = collection_area_to_irf_table(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1)
-    e_disp_table = energy_dispersion_to_irf_table(selected_gamma_events, bins=energy_bins, theta_bins=2)
+
+    energies = selected_gamma_events['corsika_event_header_total_energy'].values * u.GeV
+    offsets = oga.calculate_fov_offset(selected_gamma_events)
+
+
+    collection_table = collection_area_to_irf_table(
+        mc_production_spectrum,
+        event_energies=energies,
+        event_fov_offsets=offsets,
+        bins=energy_bins,
+        smoothing=1.25,
+    )
+
+    energy_prediction = selected_gamma_events['gamma_energy_prediction'].values * u.GeV
+    e_disp_table = energy_dispersion_to_irf_table(
+        energies,
+        energy_prediction,
+        offsets,
+        bins=energy_bins,
+        theta_bins=2
+    )
+
 
     primary_hdu = oga.create_primary_hdu()
     collection_hdu = fits.table_to_hdu(collection_table)

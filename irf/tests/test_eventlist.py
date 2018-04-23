@@ -17,7 +17,6 @@ def test_roundtrip():
         output_path = tmpdir
         dl3 = os.path.join(FIXTURE_DIR, 'crab_dl3_small.hdf5')
         predictions = os.path.join(FIXTURE_DIR, 'gamma_predictions_dl2.hdf5')
-        showers = os.path.join(FIXTURE_DIR, 'showers.hdf5')
 
-        result = runner.invoke(fact_dl3_to_oga.main, [showers, predictions, dl3, output_path])
+        result = runner.invoke(fact_dl3_to_oga.main, [predictions, dl3, output_path])
         assert result.exit_code == 0

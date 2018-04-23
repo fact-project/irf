@@ -2,6 +2,8 @@ import fact.io
 import os
 import pytest
 from irf import energy_dispersion, energy_dispersion_to_irf_table
+from irf.oga import calculate_fov_offset
+
 import astropy.units as u
 import numpy as np
 
@@ -34,6 +36,9 @@ def test_dispersion(predictions):
 
 
 def test_irf_writing(predictions):
-    t = energy_dispersion_to_irf_table(predictions, bins=5, theta_bins=1)
+    energy_true = predictions['corsika_event_header_total_energy'].values * u.GeV
+    energy_prediction = predictions['gamma_energy_prediction'].values * u.GeV
+    offsets = calculate_fov_offset(predictions)
+    t = energy_dispersion_to_irf_table(energy_true, energy_prediction, offsets, bins=5, theta_bins=1)
     assert len(t) == 1
     assert t['MATRIX'].data.shape == (1, 1, 5, 5)
