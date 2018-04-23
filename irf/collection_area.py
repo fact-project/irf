@@ -13,11 +13,10 @@ import datetime
 
 @u.quantity_input(fov=u.deg, impact=u.m)
 def collection_area_to_irf_table(
-    corsika_showers,
-    selected_diffuse_gammas,
+    mc_production_spectrum,
+    event_fov_offsets,
+    event_energies,
     bins=10,
-    impact=270 * u.m,
-    sample_fraction=1.0,
     fov=4.5 * u.deg
 ):
     '''
@@ -121,11 +120,9 @@ def histograms(
 
 @u.quantity_input(impact=u.meter)
 def collection_area(
-        all_events,
-        selected_events,
-        impact,
-        bins,
-        sample_fraction=1.0,
+        mc_production_spectrum,
+        event_energies,
+        bins=10,
         smooth=False,
 ):
     '''
@@ -133,29 +130,21 @@ def collection_area(
 
     Parameters
     ----------
-    all_events: array-like
-        Quantity which should be histogrammed for all simulated events
-    selected_events: array-like
+    mc_production_spectrum: MCSpectrum instance
+        The production spectrum used for producing the monte carlos.
+    event_energies: array-like
         Quantity which should be histogrammed for all selected events
     bins: int or array-like
         either number of bins or bin edges for the histogram
-    impact: astropy Quantity of type length
-        The maximal simulated impact parameter
-    sample_fraction: float
-        The fraction of `all_events` that was analysed
-        to create `selected_events`
     '''
 
-    hist_all, hist_selected, bin_edges = histograms(
-        all_events,
-        selected_events,
-        bins,
-    )
+    if np.isscalar(bins):
+        low = np.log10(mc_production_spectrum.e_min().value)
+        high = np.log10(mc_production_spectrum.e_max().value)
+        bins = np.logspace(low, high, endpoint=True, num=bins + 1)
 
-    hist_selected = (hist_selected / sample_fraction).astype(int)
-
-    bin_width = np.diff(bin_edges)
-    bin_center = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    hist_all = mc_production_spectrum.expected_events_for_bins(energy_bins=bins)
+    hist_selected, _ = np.histogram(event_energies, bins=bins)
 
     invalid = hist_selected > hist_all
     hist_selected[invalid] = hist_all[invalid]
@@ -163,14 +152,13 @@ def collection_area(
     lower_conf, upper_conf = binom_conf_interval(hist_selected, hist_all)
 
     # scale confidences to match and split
-    lower_conf = lower_conf * np.pi * impact**2
-    upper_conf = upper_conf * np.pi * impact**2
+    lower_conf = lower_conf * mc_production_spectrum.generation_area
+    upper_conf = upper_conf * mc_production_spectrum.generation_area
 
-    area = (hist_selected / hist_all) * np.pi * impact**2
-
+    area = (hist_selected / hist_all) * mc_production_spectrum.generation_area
 
     if smooth:
         a = area.copy()
         area = gaussian_filter(a.value, sigma=1.25, ) * area.unit
 
-    return area, bin_center, bin_width, lower_conf, upper_conf
+    return area, lower_conf, upper_conf
