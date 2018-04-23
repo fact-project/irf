@@ -6,32 +6,33 @@ from astropy.table import Table
 
 from scipy.ndimage.filters import gaussian_filter
 
-from irf.oga import calculate_fov_offset
 import datetime
 
 
 
-@u.quantity_input(fov=u.deg, impact=u.m)
+@u.quantity_input(fov=u.deg, event_fov_offsets=u.deg)
 def collection_area_to_irf_table(
     mc_production_spectrum,
     event_fov_offsets,
     event_energies,
     bins=10,
-    fov=4.5 * u.deg
+    fov=4.5 * u.deg,
+    offset_bins=5,
+    sample_fraction=1,
+    smoothing=0,
 ):
     '''
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
     '''
 
-    shower_energy = (corsika_showers.energy.values * u.GeV).to('TeV')
-    true_event_energy = (selected_diffuse_gammas.corsika_event_header_total_energy.values * u.GeV).to('TeV')
-    offset = calculate_fov_offset(selected_diffuse_gammas)
+    event_energies = event_energies.to('TeV')
+    event_fov_offsets = event_fov_offsets.to('deg')
 
     if np.isscalar(bins):
-        low = np.log10(shower_energy.min().value)
-        high = np.log10(shower_energy.max().value)
-        bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
+        low = np.log10(mc_production_spectrum.e_min.value)
+        high = np.log10(mc_production_spectrum.e_max.value)
+        bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1) * u.TeV
     else:
         low = bins.min()
         high = bins.max()
@@ -40,25 +41,24 @@ def collection_area_to_irf_table(
     energy_lo = bin_edges[np.newaxis, :-1]
     energy_hi = bin_edges[np.newaxis, 1:]
 
-    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=5)
+    theta_bin_edges = np.linspace(0, fov.to('deg') / 2, endpoint=True, num=offset_bins)
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
 
     areas = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= offset.value) & (offset.value < upper)
-        f = (upper**2 - lower**2) / ((fov.value / 2) ** 2) * sample_fraction
+        m = (lower <= event_fov_offsets) & (event_fov_offsets < upper)
+        f = (upper**2 - lower**2) / ((fov / 2) ** 2) * sample_fraction
 
         r = collection_area(
-            shower_energy,
-            true_event_energy[m],
-            impact=impact,
+            mc_production_spectrum,
+            event_energies[m],
             bins=bin_edges,
             sample_fraction=f,
-            smooth=True,
+            smoothing=smoothing,
         )
 
-        area, bin_center, bin_width, lower_conf, upper_conf = r
+        area, lower_conf, upper_conf = r
         areas.append(area.value)
 
     area = np.vstack(areas)
@@ -66,10 +66,10 @@ def collection_area_to_irf_table(
 
     t = Table(
         {
-            'ENERG_LO': energy_lo * u.TeV,
-            'ENERG_HI': energy_hi * u.TeV,
-            'THETA_LO': theta_lo * u.deg,
-            'THETA_HI': theta_hi * u.deg,
+            'ENERG_LO': energy_lo,
+            'ENERG_HI': energy_hi,
+            'THETA_LO': theta_lo,
+            'THETA_HI': theta_hi,
             'EFFAREA': area,
         }
     )
@@ -85,45 +85,13 @@ def collection_area_to_irf_table(
     return t
 
 
-def histograms(
-        all_events,
-        selected_events,
-        bins,
-        range=None,
-):
-    '''
-    Create histograms in the given bins for two vectors.
-
-    Parameters
-    ----------
-    all_events: array-like
-        Quantity which should be histogrammed for all simulated events
-    selected_events: array-like
-        Quantity which should be histogrammed for all selected events
-    bins: int or array-like
-        either number of bins or bin edges for the histogram
-    returns: hist_all, hist_selected,  bin_edges
-    '''
-
-    hist_all, bin_edges = np.histogram(
-        all_events,
-        bins=bins,
-    )
-
-    hist_selected, _ = np.histogram(
-        selected_events,
-        bins=bin_edges,
-    )
-
-    return hist_all, hist_selected, bin_edges
-
-
 @u.quantity_input(impact=u.meter)
 def collection_area(
         mc_production_spectrum,
         event_energies,
         bins=10,
-        smooth=False,
+        smoothing=0,
+        sample_fraction=1,
 ):
     '''
     Calculate the collection area for the given events.
@@ -136,14 +104,19 @@ def collection_area(
         Quantity which should be histogrammed for all selected events
     bins: int or array-like
         either number of bins or bin edges for the histogram
+    smoothing: float
+        if larger than 0, a gaussian filter will be applied to the collection area.
+        the amount of smoothing to apply given here is sigma parameter
+        in scipy.ndimage.filters.gaussian_filter
     '''
 
+    event_energies = event_energies.to('TeV')
     if np.isscalar(bins):
-        low = np.log10(mc_production_spectrum.e_min().value)
-        high = np.log10(mc_production_spectrum.e_max().value)
-        bins = np.logspace(low, high, endpoint=True, num=bins + 1)
+        low = np.log10(mc_production_spectrum.e_min.value)
+        high = np.log10(mc_production_spectrum.e_max.value)
+        bins = np.logspace(low, high, endpoint=True, num=bins + 1) * u.TeV
 
-    hist_all = mc_production_spectrum.expected_events_for_bins(energy_bins=bins)
+    hist_all = mc_production_spectrum.expected_events_for_bins(energy_bins=bins) * sample_fraction
     hist_selected, _ = np.histogram(event_energies, bins=bins)
 
     invalid = hist_selected > hist_all
@@ -157,8 +130,8 @@ def collection_area(
 
     area = (hist_selected / hist_all) * mc_production_spectrum.generation_area
 
-    if smooth:
+    if smoothing > 0:
         a = area.copy()
-        area = gaussian_filter(a.value, sigma=1.25, ) * area.unit
+        area = gaussian_filter(a.value, sigma=smoothing, ) * area.unit
 
     return area, lower_conf, upper_conf
