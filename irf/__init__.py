@@ -1,4 +1,4 @@
-from .collection_area import collection_area_energy
+from .collection_area import collection_area
 
 
-__all__ = ['collection_area_energy']
+__all__ = ['collection_area']

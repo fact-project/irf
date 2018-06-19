@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='irf',
-    version='0.0.4',
+    version='0.2.0',
     description='Functions to do instrument response functions for FACT',
     url='http://github.com/fact-project/irf',
     author='Kai Brügge, Maximilian Nöthe',
