@@ -18,7 +18,8 @@ def collection_area_to_irf_table(
     bins=10,
     impact=270 * u.m,
     sample_fraction=1.0,
-    fov=4.5 * u.deg
+    fov=4.5 * u.deg,
+    smoothing=0,
 ):
     '''
     See here what that format is supposed to look like:
@@ -56,7 +57,7 @@ def collection_area_to_irf_table(
             impact=impact,
             bins=bin_edges,
             sample_fraction=f,
-            smooth=True,
+            smoothing=smoothing,
         )
 
         area, bin_center, bin_width, lower_conf, upper_conf = r
@@ -126,7 +127,7 @@ def collection_area(
         impact,
         bins,
         sample_fraction=1.0,
-        smooth=False,
+        smoothing=0,
 ):
     '''
     Calculate the collection area for the given events.
@@ -144,6 +145,11 @@ def collection_area(
     sample_fraction: float
         The fraction of `all_events` that was analysed
         to create `selected_events`
+    sample_fraction: float
+        The fraction of `all_events` that was analysed
+        to create `selected_events`
+    smoothing: float
+        The amount of smoothing to apply to the resulting matrix
     '''
 
     hist_all, hist_selected, bin_edges = histograms(
@@ -168,9 +174,8 @@ def collection_area(
 
     area = (hist_selected / hist_all) * np.pi * impact**2
 
-
-    if smooth:
+    if smoothing > 0:
         a = area.copy()
-        area = gaussian_filter(a.value, sigma=1.25, ) * area.unit
+        area = gaussian_filter(a.value, sigma=smoothing, ) * area.unit
 
     return area, bin_center, bin_width, lower_conf, upper_conf

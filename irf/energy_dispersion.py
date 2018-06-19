@@ -25,7 +25,7 @@ def make_energy_bins(energy_true, energy_prediction, bins):
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV, event_offset=u.deg)
-def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, theta_bins=3):
+def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, theta_bins=3, smoothing=0):
     '''
     See here what that format is supposed to look like:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
@@ -55,7 +55,7 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, th
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
         m = (lower <= event_offset.value) & (event_offset.value < upper)
-        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins=bins_e_true, normalize=True, smooth=True)
+        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins=bins_e_true, normalize=True, smoothing=smoothing)
         migras.append(migra.T)
 
     matrix = np.stack(migras)[np.newaxis, :]
@@ -87,8 +87,7 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, th
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
-def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, smooth=False):
-
+def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, smoothing=0):
     if np.isscalar(bins):
         bins = make_energy_bins(energy_true, energy_prediction, bins)
 
@@ -104,14 +103,14 @@ def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, 
         hist = np.nan_to_num(h).T
 
 
-    if smooth:
-        hist = gaussian_filter(hist, sigma=1.25, )
+    if smoothing > 0:
+        hist = gaussian_filter(hist, sigma=smoothing)
 
     return hist, bins_e_true * energy_true.unit, bins_e_prediction * energy_true.unit
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
-def energy_migration(energy_true, energy_prediction, bins=10, normalize=True, smooth=False):
+def energy_migration(energy_true, energy_prediction, bins=10, normalize=True, smoothing=0):
 
     if np.isscalar(bins):
         bins = make_energy_bins(energy_true, energy_prediction, bins)
@@ -131,7 +130,7 @@ def energy_migration(energy_true, energy_prediction, bins=10, normalize=True, sm
         h = h / h.sum(axis=0)
         hist = np.nan_to_num(h).T
 
-    if smooth:
-        hist = gaussian_filter(hist, sigma=1.25, )
+    if smoothing > 0:
+        hist = gaussian_filter(hist, sigma=smoothing, )
 
     return hist, bins * energy_true.unit, bins_migra

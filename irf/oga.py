@@ -1,3 +1,11 @@
+'''
+This module contains methods to help handle the fits tables
+required to work with the open gamma-ray astro formats (oga):
+
+https://gamma-astro-data-formats.readthedocs.io/en/latest/
+
+'''
+
 import fact.io
 import astropy.units as u
 from astropy.io import fits
@@ -9,13 +17,15 @@ import numpy as np
 from astropy.coordinates.angle_utilities import angular_separation
 
 
-# the timestamps in the fits files need a reference MJD time according to an (ogip?) standard.
+# the timestamps in the fits files need a reference MJD time according to some (ogip?) standard.
+# The exact value is not important for anything.
 MJDREF = 55835  # MJD sometime near FACT's first light. 2011-10-01T00:00:00 UTC
 
 
 def extend_hdu_header(header, values_dict):
     '''
-    extend existing hdu header by values in a dict
+    Extend existing hdu header by values in a dict.
+    It automatically strips units from any value in the passed dict.
     '''
     for k, v in values_dict.items():
         if not np.isscalar(v):
@@ -68,7 +78,7 @@ def create_primary_hdu():
     header = fits.Header()
 
     header['OBSERVER'] = 'The non-insane FACT guys '
-    header['COMMENT'] = 'FACT OGA. Very preliminary'
+    header['COMMENT'] = 'FACT OGA.'
     header['COMMENT'] = 'See https://gamma-astro-data-formats.readthedocs.io/en/latest/'
     header['COMMENT'] = 'This file was created by https://github.com/fact-project/irf'
     header['COMMENT'] = 'See our full analysis here https://github.com/fact-project/open_crab_sample_analysis'
@@ -84,6 +94,7 @@ def create_dl3_hdu(dl3, run):
     Takes a pandas dataframe which contains the DL3 Information and creates an hdu
     according to the standard found here:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/events/events.html
+
     returns a fits hdu object
     '''
     # the format expects to see some event id. I just take the index
@@ -212,6 +223,7 @@ def create_observation_index_hdu(runs):
     Takes a pandas dataframe which contains the information about runs.
     Take all the mandatory keywords found here:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/data_storage/obs_index/index.html
+
     returns a fits hdu object
     '''
     obs_id = observation_id(runs.night, runs.run_id)
@@ -251,9 +263,9 @@ def create_observation_index_hdu(runs):
 
 def add_time_information_to_hdu(hdu):
     '''
-    Takes an hdu object and adds information about FACTs time referecne to it.
+    Takes an hdu object and adds information about FACTs time reference to it.
     These values are constants like the location of the telescope and its altitude ASL.
-    As well as the TIMESYS keyword which is always 'utc'.
+    As well as the TIMESYS keyword which is always fixed to 'utc' for FACT.
     '''
     hdu_header = hdu.header
     hdu_header['MJDREFI'] = MJDREF

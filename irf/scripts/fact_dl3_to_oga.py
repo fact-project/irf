@@ -13,7 +13,6 @@ from matplotlib.colors import PowerNorm
 
 columns_to_read = [
     'theta_deg',
-    'leakage1',
     'corsika_event_header_total_energy',
     'gamma_prediction',
     'gamma_energy_prediction',
@@ -41,14 +40,42 @@ columns_to_read = [
     'output_directory',
     type=click.Path(file_okay=False, dir_okay=True, exists=False),
 )
-@click.option('-c', '--prediction_threshold', type=click.FLOAT, default=0.85)
-@click.option('-t', '--theta_square_cut', type=click.FLOAT, default=0.02)
+@click.option(
+    '-c', '--prediction_threshold',
+    type=click.FLOAT,
+    default=0.85,
+    help='The prediction threshold cut to apply to the MC events before calculating the irf'
+        'and to the DL3 data before writing it to fits'
+)
+@click.option(
+    '-t', '--theta_square_cut',
+     type=click.FLOAT,
+     default=0.02,
+     help='The theta square cut to apply to the MC events before calculating the irf',
+)
 @click.option(
     '-m', '--max_scat',
     default=270,
     help='Maximum scatter radius (meter) used during corsika simulations of gammas.',
 )
 def main(showers, predictions, dl3, output_directory, prediction_threshold, theta_square_cut, max_scat):
+    '''
+    Takes FACT Corsika information (SHOWERS), FACT (diffuse) MC data (PREDICTIONS)
+    and FACT observations (DL3) as input and writes DL3 data and IRFs according
+    to the open gamma-ray astro format to OUTPUT_DIRECTORY.
+
+    The (PREDICTIONS) file needs to have the following columns:
+        'theta_deg',
+        'corsika_event_header_total_energy',
+        'gamma_prediction',
+        'gamma_energy_prediction',
+        'aux_pointing_position_zd',
+        'aux_pointing_position_az',
+        'source_position_az',
+        'source_position_zd'.
+
+
+    '''
 
     os.makedirs(output_directory, exist_ok=True)
 
@@ -106,9 +133,8 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
     ax3.set_xlim([bins.min(), bins.max()])
 
 
-
     ax1 = bottom[0]
-    hist, bins_e_true, bins_e_prediction = energy_dispersion(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smooth=True)
+    hist, bins_e_true, bins_e_prediction = energy_dispersion(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smoothing=1.25)
     im = ax1.pcolormesh(bins_e_true, bins_e_prediction, hist.T, cmap='GnBu', norm=PowerNorm(0.5))
     ax1.plot(ax1.get_xlim(), ax1.get_ylim(), ls='--', color='darkgray')
     fig.colorbar(im, ax=ax1)
@@ -118,7 +144,7 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
     ax1.set_ylabel(r'$E_{\mathrm{Reco}} /  \mathrm{TeV}$')
 
     ax2 = bottom[1]
-    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smooth=True)
+    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smoothing=1.25)
     im = ax2.pcolormesh(bins_e_true, bins_mu, hist.T, cmap='GnBu', norm=PowerNorm(0.5))
     fig.colorbar(im, ax=ax2)
     ax2.set_xscale('log')
@@ -137,8 +163,8 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
 def write_irf(output_directory, corsika_showers, gamma_events, prediction_threshold, theta_square_cut, energy_bins, irf_path='fact_irf.fits'):
     q = f'theta_deg <= {np.sqrt(theta_square_cut)} & gamma_prediction >= {prediction_threshold}'
     selected_gamma_events = gamma_events.query(q).copy()
-    collection_table = collection_area_to_irf_table(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1)
-    e_disp_table = energy_dispersion_to_irf_table(selected_gamma_events, bins=energy_bins, theta_bins=2)
+    collection_table = collection_area_to_irf_table(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=1.25)
+    e_disp_table = energy_dispersion_to_irf_table(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=1.25)
 
     primary_hdu = oga.create_primary_hdu()
     collection_hdu = fits.table_to_hdu(collection_table)
