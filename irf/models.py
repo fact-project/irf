@@ -270,7 +270,6 @@ class MCSpectrum(Spectrum):
         self.generator_solid_angle = generator_solid_angle
         self.normalization_constant = 1 / (u.TeV * u.m**2 * u.s)
         if generator_solid_angle is not None and generator_solid_angle > 0 * u.deg:
-            self.extended_source = True
             self.normalization_constant = 1 / (u.TeV * u.m**2 * u.s * u.sr)
             angle = generator_solid_angle.to('rad').value
             angle = (1 - np.cos(angle)) * 2 * np.pi * u.sr

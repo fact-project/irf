@@ -18,7 +18,7 @@ def make_energy_bins(energy_true, energy_prediction, bins):
 
     low = np.log10(e_min.value)
     high = np.log10(e_max.value)
-    bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
+    bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1) * energy_true.unit
 
     return bin_edges
 
@@ -30,7 +30,7 @@ def energy_dispersion_to_irf_table(
     event_fov_offsets,
     fov=4.5 * u.deg,
     bins=10,
-    theta_bins=3,
+    offset_bins=3,
     smoothing=0,
 ):
     '''
@@ -54,7 +54,11 @@ def energy_dispersion_to_irf_table(
     migra_lo = bins_mu[np.newaxis, :-1]
     migra_hi = bins_mu[np.newaxis, 1:]
 
-    theta_bin_edges = np.linspace(0, fov.to('deg') / 2, endpoint=True, num=theta_bins + 1)
+    if np.isscalar(offset_bins):
+        theta_bin_edges = np.linspace(0, fov.to('deg') / 2, endpoint=True, num=offset_bins + 1)
+    else:
+        theta_bin_edges = offset_bins
+
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
 
@@ -68,12 +72,12 @@ def energy_dispersion_to_irf_table(
 
     t = Table(
         {
-            'ENERG_LO': energy_lo * u.TeV,
-            'ENERG_HI': energy_hi * u.TeV,
+            'ENERG_LO': energy_lo,
+            'ENERG_HI': energy_hi,
             'MIGRA_LO': migra_lo,
             'MIGRA_HI': migra_hi,
-            'THETA_LO': theta_lo * u.deg,
-            'THETA_HI': theta_hi * u.deg,
+            'THETA_LO': theta_lo,
+            'THETA_HI': theta_hi,
             'MATRIX': matrix,
         }
     )

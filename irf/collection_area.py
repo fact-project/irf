@@ -41,7 +41,7 @@ def collection_area_to_irf_table(
     energy_lo = bin_edges[np.newaxis, :-1]
     energy_hi = bin_edges[np.newaxis, 1:]
 
-    theta_bin_edges = np.linspace(0, fov.to('deg') / 2, endpoint=True, num=offset_bins)
+    theta_bin_edges = np.linspace(0, fov.to('deg') / 2, endpoint=True, num=offset_bins + 1)
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
 

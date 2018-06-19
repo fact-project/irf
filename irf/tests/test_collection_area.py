@@ -116,8 +116,9 @@ def test_irf_writing(predictions, tmpdir):
     )
 
 
-    assert t['ENERG_LO'].shape == (1, 6)
     assert t['ENERG_LO'].unit == u.TeV
-    assert t['EFFAREA'].shape == (1, 4, 6)
+    assert t['ENERG_HI'].unit == u.TeV
+    assert t['THETA_HI'].unit == u.deg
+    assert t['THETA_LO'].unit == u.deg
     assert t['EFFAREA'].unit == u.m**2
     assert len(t) == 1
