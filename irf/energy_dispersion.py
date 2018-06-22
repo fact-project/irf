@@ -40,7 +40,7 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, th
     else:
         bins_e_true = bins
 
-    bins_mu = np.linspace(0, 3, endpoint=True, num=len(bins_e_true))
+    bins_mu = np.linspace(0, 6, endpoint=True, num=len(bins_e_true))
 
     energy_lo = bins_e_true[np.newaxis, :-1]
     energy_hi = bins_e_true[np.newaxis, 1:]
@@ -55,7 +55,7 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, th
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
         m = (lower <= event_offset.value) & (event_offset.value < upper)
-        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins=bins_e_true, normalize=True, smoothing=smoothing)
+        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins_energy=bins_e_true, bins_mu=bins_mu, normalize=True, smoothing=smoothing)
         migras.append(migra.T)
 
     matrix = np.stack(migras)[np.newaxis, :]
@@ -97,40 +97,42 @@ def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, 
         bins=bins,
     )
 
+    if smoothing > 0:
+        hist = gaussian_filter(hist, sigma=smoothing)
+
     if normalize:
         h = hist.T
         h = h / h.sum(axis=0)
         hist = np.nan_to_num(h).T
 
 
-    if smoothing > 0:
-        hist = gaussian_filter(hist, sigma=smoothing)
 
     return hist, bins_e_true * energy_true.unit, bins_e_prediction * energy_true.unit
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
-def energy_migration(energy_true, energy_prediction, bins=10, normalize=True, smoothing=0):
+def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10, normalize=True, smoothing=0):
 
-    if np.isscalar(bins):
-        bins = make_energy_bins(energy_true, energy_prediction, bins)
+    if np.isscalar(bins_energy):
+        bins_energy = make_energy_bins(energy_true, energy_prediction, bins_energy)
 
     migra = (energy_prediction / energy_true).si.value
 
-    bins_migra = np.linspace(0, 3, endpoint=True, num=len(bins))
+    if np.isscalar(bins_mu):
+        bins_mu = np.linspace(0, 6, endpoint=True, num=len(bins_energy))
 
-    hist, bins_e_true, bins_migra = np.histogram2d(
+    hist, bins_e_true, bins_mu = np.histogram2d(
         energy_true.value,
         migra,
-        bins=[bins, bins_migra],
+        bins=[bins_energy, bins_mu],
     )
+
+    if smoothing > 0:
+        hist = gaussian_filter(hist, sigma=smoothing, )
 
     if normalize:
         h = hist.T
         h = h / h.sum(axis=0)
         hist = np.nan_to_num(h).T
 
-    if smoothing > 0:
-        hist = gaussian_filter(hist, sigma=smoothing, )
-
-    return hist, bins * energy_true.unit, bins_migra
+    return hist, bins_energy * energy_true.unit, bins_mu
