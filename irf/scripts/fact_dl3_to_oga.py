@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import astropy.units as u
 from matplotlib.colors import PowerNorm
 
+from dateutil.parser import parse
+
 
 columns_to_read = [
     'theta_deg',
@@ -50,7 +52,7 @@ columns_to_read = [
 @click.option(
     '-t', '--theta_square_cut',
      type=click.FLOAT,
-     default=0.02,
+     default=0.03,
      help='The theta square cut to apply to the MC events before calculating the irf',
 )
 @click.option(
@@ -58,7 +60,15 @@ columns_to_read = [
     default=270,
     help='Maximum scatter radius (meter) used during corsika simulations of gammas.',
 )
-def main(showers, predictions, dl3, output_directory, prediction_threshold, theta_square_cut, max_scat):
+@click.option(
+    '--start',
+    help='Min datetime stamp for run selection.',
+)
+@click.option(
+    '--end',
+    help='max datetime stamp for run selection.',
+)
+def main(showers, predictions, dl3, output_directory, prediction_threshold, theta_square_cut, max_scat, start, end):
     '''
     Takes FACT Corsika information (SHOWERS), FACT (diffuse) MC data (PREDICTIONS)
     and FACT observations (DL3) as input and writes DL3 data and IRFs according
@@ -73,32 +83,58 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
         'aux_pointing_position_az',
         'source_position_az',
         'source_position_zd'.
-
-
     '''
 
     os.makedirs(output_directory, exist_ok=True)
 
     dl3_events = fact.io.read_h5py(dl3, key='events')
+
+    if start:
+        dt = parse(start)
+        m = pd.to_datetime(dl3_events.timestamp) >= dt
+        dl3_events = dl3_events[m]
+
+    if end:
+        dt = parse(end)
+        m = pd.to_datetime(dl3_events.timestamp) < dt
+        dl3_events = dl3_events[m]
+
     gamma_events = fact.io.read_data(predictions, key='events', columns=columns_to_read)
 
-    energy_bins = np.logspace(np.log10(0.2), np.log10(50), endpoint=True, num=25 + 1)
-
-    diagnostic_plots(gamma_events, dl3_events, energy_bins, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
+    diagnostic_plots(gamma_events, dl3_events, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
     plt.savefig(os.path.join(output_directory, 'plots.png'))
 
     gammalike_data_events = dl3_events.query(f'gamma_prediction >= {prediction_threshold}').copy()
     runs = fact.io.read_h5py(dl3, key='runs')
+
+    if start:
+        dt = parse(start)
+        m = pd.to_datetime(runs.run_start) >= dt
+        runs = runs[m]
+
+    if end:
+        dt = parse(end)
+        m = pd.to_datetime(runs.run_stop) < dt
+        runs = runs[m]
+
+    print(f'Total ontime: {runs.ontime.sum()/60/60} hours')
+
     write_dl3(output_directory, gammalike_data_events, runs)
 
     showers = fact.io.read_data(showers, key='showers')
-    write_irf(output_directory, showers, gamma_events, prediction_threshold, theta_square_cut, energy_bins)
+    write_irf(output_directory, showers, gamma_events, prediction_threshold, theta_square_cut)
 
 
-def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, prediction_threshold):
+def diagnostic_plots(gamma_events, dl3_events, theta_square_cut, prediction_threshold):
     q = f'theta_deg <= {np.sqrt(theta_square_cut)} & gamma_prediction >= {prediction_threshold}'
+
     crab_events_on_region = dl3_events.query(q).copy()
     selected_gamma_events = gamma_events.query(q).copy()
+
+    min_energy = selected_gamma_events.corsika_event_header_total_energy.min() * u.GeV
+    max_energy = selected_gamma_events.corsika_event_header_total_energy.max() * u.GeV
+
+    bins = np.logspace(np.log10(min_energy.to('TeV').value), np.log10(max_energy.to('TeV').value), endpoint=True, num=25 + 1)
 
     true_event_energy = (selected_gamma_events.corsika_event_header_total_energy.values * u.GeV).to('TeV')
     predicted_event_energy = (selected_gamma_events.gamma_energy_prediction.values * u.GeV).to('TeV')
@@ -116,13 +152,13 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
     ax1.set_ylabel(r'$E_{\mathrm{Reco}} /  \mathrm{TeV}$')
 
     ax2 = top[1]
-    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins=bins, normalize=False)
+    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins_energy=bins, normalize=False)
     im = ax2.pcolormesh(bins_e_true, bins_mu, hist.T, cmap='GnBu', norm=PowerNorm(0.5))
     fig.colorbar(im, ax=ax2)
     ax2.set_xscale('log')
     ax2.set_ylabel(r'$E_{\mathrm{Reco}} / E_\mathrm{{True}}$')
     ax2.set_xlabel(r'$E_{\mathrm{True}} /  \mathrm{TeV}$')
-    ax2.set_ylim([0, 3])
+    ax2.set_ylim([bins_mu.min(), bins_mu.max()])
 
     ax3 = top[2]
     ax3.hist(true_event_energy, bins=bins, histtype='step', label='true energies', density=True, color='lightgray', ls='--')
@@ -144,13 +180,13 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
     ax1.set_ylabel(r'$E_{\mathrm{Reco}} /  \mathrm{TeV}$')
 
     ax2 = bottom[1]
-    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smoothing=1.25)
+    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins_energy=bins, normalize=True, smoothing=1.25)
     im = ax2.pcolormesh(bins_e_true, bins_mu, hist.T, cmap='GnBu', norm=PowerNorm(0.5))
     fig.colorbar(im, ax=ax2)
     ax2.set_xscale('log')
     ax2.set_ylabel(r'$E_{\mathrm{Reco}} / E_\mathrm{{True}}$')
     ax2.set_xlabel(r'$E_{\mathrm{True}} /  \mathrm{TeV}$')
-    ax2.set_ylim([0, 3])
+    ax2.set_ylim([bins_mu.min(), bins_mu.max()])
 
     ax3 = bottom[2]
     tb = np.linspace(0, 0.1, 20)
@@ -160,11 +196,15 @@ def diagnostic_plots(gamma_events, dl3_events, bins, theta_square_cut, predictio
 
 
 
-def write_irf(output_directory, corsika_showers, gamma_events, prediction_threshold, theta_square_cut, energy_bins, irf_path='fact_irf.fits'):
+def write_irf(output_directory, corsika_showers, gamma_events, prediction_threshold, theta_square_cut, irf_path='fact_irf.fits'):
     q = f'theta_deg <= {np.sqrt(theta_square_cut)} & gamma_prediction >= {prediction_threshold}'
+
     selected_gamma_events = gamma_events.query(q).copy()
-    collection_table = collection_area_to_irf_table(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=1.25)
-    e_disp_table = energy_dispersion_to_irf_table(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=1.25)
+    min_energy = selected_gamma_events.corsika_event_header_total_energy.min() * u.GeV
+    max_energy = selected_gamma_events.corsika_event_header_total_energy.max() * u.GeV
+    energy_bins = np.logspace(np.log10(min_energy.to('TeV').value), np.log10(max_energy.to('TeV').value), endpoint=True, num=25 + 1)
+    collection_table = collection_area_to_irf_table(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8)
+    e_disp_table = energy_dispersion_to_irf_table(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=0.8)
 
     primary_hdu = oga.create_primary_hdu()
     collection_hdu = fits.table_to_hdu(collection_table)
