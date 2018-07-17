@@ -71,6 +71,43 @@ def file_names_from_run_table(runs):
     return names
 
 
+
+def timestamp_to_mjdref(timestamp, mjdref=MJDREF, location=fact.instrument.constants.LOCATION):
+    '''
+    Convert a timestamp (or many timestamps in a pandas series) to seconds relative to the MJDREF
+    keyword which has to be given in the FITS header.
+
+    I convert this to a pandas datetime thing before creating a astropy Time object.
+
+    See https://github.com/astropy/astropy/issues/6428
+    '''
+    timestamp = pd.Series(pd.to_datetime(timestamp))
+
+    time = Time(timestamp.asobject, location=location)
+    time = time - Time(mjdref, scale='utc', format='mjd')
+
+    return np.array(time.to(u.s).value, ndmin=1) * u.s
+
+
+def create_gti_hdu(run):
+    '''
+    Creates the GTI hdu which gets added to the dl3 files.
+    See https://gamma-astro-data-formats.readthedocs.io/en/latest/events/gti.html
+    '''
+
+    start_time = timestamp_to_mjdref(run.run_start)
+    stop_time = timestamp_to_mjdref(run.run_stop)
+
+    t = Table({'START': start_time, 'STOP': stop_time})
+    hdu = fits.table_to_hdu(t)
+    add_time_information_to_hdu(hdu)
+
+    hdu.header['EXTNAME'] = 'GTI'
+    hdu.header['CREATOR'] = 'FACT IRF'
+    hdu.header['TELESCOP'] = 'FACT'
+    return hdu
+
+
 def create_primary_hdu():
     '''
     Creates a primary fits HDU common to all FACT fits files.
@@ -110,14 +147,8 @@ def create_dl3_hdu(dl3, run):
     energy = dl3.gamma_energy_prediction.values * u.GeV
     energy = energy.to('TeV')
 
-    # convert to timestamps. older pyfact versions don't do this automagically
-    if not is_datetime64_any_dtype(dl3.timestamp):
-        dl3.timestamp = pd.to_datetime(dl3.timestamp, infer_datetime_format=True)
-
-    time = Time(dl3.timestamp.asobject, location=fact.instrument.constants.LOCATION)
-    time = time - Time(MJDREF, scale='utc', format='mjd')
-
-    t = Table({'EVENT_ID': event_id, 'ENERGY': energy, 'DEC': dec, 'RA': ra, 'TIME': time.to('s')})
+    timestamp = timestamp_to_mjdref(dl3.timestamp)
+    t = Table({'EVENT_ID': event_id, 'ENERGY': energy, 'DEC': dec, 'RA': ra, 'TIME': timestamp})
     hdu = fits.table_to_hdu(t)
     add_time_information_to_hdu(hdu)
     hdu.header['EUNIT'] = 'TeV'

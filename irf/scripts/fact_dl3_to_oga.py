@@ -231,6 +231,8 @@ def write_dl3(output_directory, dl3_events, runs):
     hdulist = fits.HDUList([primary_hdu, index_hdu])
     hdulist.writeto(os.path.join(output_directory, 'hdu-index.fits.gz'), overwrite=True)
 
+
+
     obs_ids = []
     runs = runs.copy().set_index(['night', 'run_id'])
     for n, g in tqdm(dl3_events.groupby(['night', 'run_id'])):
@@ -239,8 +241,9 @@ def write_dl3(output_directory, dl3_events, runs):
 
         run_data = g.copy()
         primary_hdu = oga.create_primary_hdu()
+        gti_hdu = oga.create_gti_hdu(runs.loc[n])
         event_hdu = oga.create_dl3_hdu(run_data, runs.loc[n])
-        hdulist = fits.HDUList([primary_hdu, event_hdu])
+        hdulist = fits.HDUList([primary_hdu, gti_hdu, event_hdu])
         fname = f'{n[0]}_{n[1]}_dl3.fits'
         hdulist.writeto(os.path.join(output_directory, fname), overwrite=True)
 
