@@ -1,5 +1,6 @@
 import fact.io
-from irf import oga, collection_area_to_irf_table, energy_dispersion_to_irf_table, energy_migration, energy_dispersion
+from irf.gadf import response, hdus
+from irf import energy_migration, energy_dispersion
 import click
 import os
 from astropy.io import fits
@@ -104,7 +105,6 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     diagnostic_plots(gamma_events, dl3_events, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
     plt.savefig(os.path.join(output_directory, 'plots.png'))
 
-    gammalike_data_events = dl3_events.query(f'gamma_prediction >= {prediction_threshold}').copy()
     runs = fact.io.read_h5py(dl3, key='runs')
 
     if start:
@@ -119,7 +119,7 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
 
     print(f'Total ontime: {runs.ontime.sum()/60/60} hours')
 
-    write_dl3(output_directory, gammalike_data_events, runs)
+    write_dl3(output_directory, dl3_events, runs, prediction_threshold=prediction_threshold)
 
     showers = fact.io.read_data(showers, key='showers')
     write_irf(output_directory, showers, gamma_events, prediction_threshold, theta_square_cut)
@@ -211,43 +211,47 @@ def write_irf(output_directory, corsika_showers, gamma_events, prediction_thresh
                         num=25 + 1
                 )
 
-    collection_table = collection_area_to_irf_table(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8)
-    e_disp_table = energy_dispersion_to_irf_table(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=0.8)
+    a_eff_hdu = response.effective_area_hdu(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8)
+    e_disp_hdu = response.energy_dispersion_hdu(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=0.8)
 
-    primary_hdu = oga.create_primary_hdu()
-    collection_hdu = fits.table_to_hdu(collection_table)
-    oga.add_meta_information_to_hdu(collection_hdu, RAD_MAX=rad_max)
+    a_eff_hdu.header['RAD_MAX'] = rad_max
+    e_disp_hdu.header['RAD_MAX'] = rad_max
 
-    e_disp_hdu = fits.table_to_hdu(e_disp_table)
-    oga.add_meta_information_to_hdu(e_disp_hdu, RAD_MAX=rad_max)
+    a_eff_hdu.header['PRED_MAX'] = (prediction_threshold, 'prediction threshold used to select events')
+    e_disp_hdu.header['PRED_MAX'] = (prediction_threshold, 'prediction threshold used to select events')
 
-    hdulist = fits.HDUList([primary_hdu, collection_hdu, e_disp_hdu])
+
+    primary_hdu = hdus.create_primary_hdu()
+
+    hdulist = fits.HDUList([primary_hdu, a_eff_hdu, e_disp_hdu])
     hdulist.writeto(os.path.join(output_directory, 'fact_irf.fits'), overwrite=True)
 
 
-def write_dl3(output_directory, dl3_events, runs):
-    primary_hdu = oga.create_primary_hdu()
-    index_hdu = oga.create_observation_index_hdu(runs)
+def write_dl3(output_directory, dl3_events, runs, prediction_threshold=0.85):
+    primary_hdu = hdus.create_primary_hdu()
+    index_hdu = hdus.create_observation_index_hdu(runs)
     hdulist = fits.HDUList([primary_hdu, index_hdu])
     hdulist.writeto(os.path.join(output_directory, 'obs-index.fits.gz'), overwrite=True)
 
 
-    primary_hdu = oga.create_primary_hdu()
-    index_hdu = oga.create_index_hdu(runs)
+    primary_hdu = hdus.create_primary_hdu()
+    index_hdu = hdus.create_index_hdu(runs)
     hdulist = fits.HDUList([primary_hdu, index_hdu])
     hdulist.writeto(os.path.join(output_directory, 'hdu-index.fits.gz'), overwrite=True)
 
+    gammalike_data_events = dl3_events.query(f'gamma_prediction >= {prediction_threshold}')
 
-    runs = runs.copy().set_index(['night', 'run_id'])
-    for n, g in tqdm(dl3_events.groupby(['night', 'run_id'])):
+    runs = runs.set_index(['night', 'run_id'])
+    for n, run_data in tqdm(gammalike_data_events.groupby(['night', 'run_id'])):
+        file_name = f'{n[0]}_{n[1]}_dl3.fits'
 
-        run_data = g.copy()
-        primary_hdu = oga.create_primary_hdu()
-        gti_hdu = oga.create_gti_hdu(runs.loc[n])
-        event_hdu = oga.create_events_hdu(run_data, runs.loc[n])
+        primary_hdu = hdus.create_primary_hdu()
+        gti_hdu = hdus.create_gti_hdu(runs.loc[n])
+        event_hdu = hdus.create_events_hdu(run_data, runs.loc[n])
+        event_hdu.header['PRED_MAX'] = (prediction_threshold, 'prediction threshold used to select events')
+
         hdulist = fits.HDUList([primary_hdu, gti_hdu, event_hdu])
-        fname = f'{n[0]}_{n[1]}_dl3.fits'
-        hdulist.writeto(os.path.join(output_directory, fname), overwrite=True)
+        hdulist.writeto(os.path.join(output_directory, file_name), overwrite=True)
 
 
 if __name__ == '__main__':
