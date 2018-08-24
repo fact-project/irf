@@ -19,6 +19,7 @@ setup(
         'pyfact>=0.20.1',
         'uncertainties',
         'corsikaio',
+        'regions',
     ],
     entry_points={
         'console_scripts': [
