@@ -8,7 +8,7 @@ from irf.energy_dispersion import energy_migration
 from irf.gadf.hdus import add_meta_information_to_hdu
 
 
-def calculate_fov_offset(df):
+def _calculate_fov_offset(df):
     '''
     Calculate the `offset` aka the `angular_separation` between the pointing and
     the source position.
@@ -51,13 +51,40 @@ def effective_area_hdu(
     smoothing=0,
 ):
     '''
-    See here what that format is supposed to look like:
+    Creates the effective area hdu to be written into a fits file accroding to the format
+    described here:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
+
+    Parameters
+    ----------
+
+    corsika_showers : pd.DataFrame
+        the corsika shower information as produced by the 'read_corsika_headers' script
+        in this project.
+    selected_diffuse_gammas :  pd.DataFrame
+        FACT DL2 data for diffuse gamma showers.
+    bins : int or arraylike
+        the enrgy bins.
+    impact : astropy.unit.Quantity (meter)
+        the maximum simulated scatter radius
+    fov :  astropy.unit.Quantity (degree)
+        the field of view of the telescope
+    smoothing : float
+        Amount of smoothing to apply to the generated matrices.
+        Equivalent to the sigma parameter in
+        https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
+
+    Returns
+    -------
+
+    astropy.io.fits.hdu
+        The fits hdu as required by the GADF
+
     '''
 
     shower_energy = (corsika_showers.energy.values * u.GeV).to('TeV')
     true_event_energy = (selected_diffuse_gammas.corsika_event_header_total_energy.values * u.GeV).to('TeV')
-    offset = calculate_fov_offset(selected_diffuse_gammas)
+    offset = _calculate_fov_offset(selected_diffuse_gammas)
 
     if np.isscalar(bins):
         low = np.log10(shower_energy.min().value)
@@ -115,16 +142,39 @@ def effective_area_hdu(
     return hdu
 
 
-@u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV, event_offset=u.deg)
-def energy_dispersion_hdu(selected_events, fov=4.5 * u.deg, bins=10, theta_bins=3, smoothing=0):
+@u.quantity_input(fov=u.deg)
+def energy_dispersion_hdu(selected_diffuse_gammas, bins=10, fov=4.5 * u.deg, theta_bins=3, smoothing=0):
     '''
-    See here what that format is supposed to look like:
+    Creates the effective area hdu to be written into a fits file accroding to the format
+    described here:
     http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
+
+    Parameters
+    ----------
+    selected_diffuse_gammas :  pd.DataFrame
+        FACT DL2 data for diffuse gamma showers.
+    bins : int or arraylike
+        the enrgy bins.
+    fov :  astropy.unit.Quantity (degree)
+        the field of view of the telescope
+    theta_bins : int
+        number of bins to use for the theta axis. (offset in FoV)
+    smoothing : float
+        Amount of smoothing to apply to the generated matrices.
+        Equivalent to the sigma parameter in
+        https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
+
+    Returns
+    -------
+
+    astropy.io.fits.hdu
+        The fits hdu as required by the GADF
+
     '''
 
-    true_event_energy = (selected_events.corsika_event_header_total_energy.values * u.GeV).to('TeV')
-    predicted_event_energy = (selected_events.gamma_energy_prediction.values * u.GeV).to('TeV')
-    event_offset = calculate_fov_offset(selected_events)
+    true_event_energy = (selected_diffuse_gammas.corsika_event_header_total_energy.values * u.GeV).to('TeV')
+    predicted_event_energy = (selected_diffuse_gammas.gamma_energy_prediction.values * u.GeV).to('TeV')
+    event_offset = _calculate_fov_offset(selected_diffuse_gammas)
 
     if np.isscalar(bins):
         bins_e_true = _make_energy_bins(true_event_energy, predicted_event_energy, bins)

@@ -30,9 +30,27 @@ def timestamp_to_mjdref(timestamp, mjdref=MJDREF, location=fact.instrument.const
     Convert a timestamp (or many timestamps in a pandas series) to seconds relative to the MJDREF
     keyword which has to be given in the FITS header.
 
-    I convert this to a pandas datetime thing before creating a astropy Time object.
+    See the standard here:
+        https://gamma-astro-data-formats.readthedocs.io/en/latest//general/time.html
 
+    I convert this to a pandas datetime thing before creating a astropy Time object.
     See https://github.com/astropy/astropy/issues/6428
+
+    Parameters
+    ----------
+
+    timestamp : one or more pd.datetime or np.datetime
+        the timestamps to convert to the correct OGIP/FITS thing.
+
+    mjdref : scalar
+        the reference time given in MJD
+    location : astropy.coordinates.earth.EarthLocation
+        the location of the telescope
+
+    Returns
+    -------
+    astropy.units.Quantity
+        seconds elapsed relative to MJDREF
     '''
     timestamp = pd.Series(pd.to_datetime(timestamp))
 

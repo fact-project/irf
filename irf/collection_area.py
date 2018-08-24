@@ -2,88 +2,8 @@ import numpy as np
 
 from astropy.stats import binom_conf_interval
 import astropy.units as u
-from astropy.table import Table
 
 from scipy.ndimage.filters import gaussian_filter
-
-from irf.oga import calculate_fov_offset
-import datetime
-
-
-
-@u.quantity_input(fov=u.deg, impact=u.m)
-def collection_area_to_irf_table(
-    corsika_showers,
-    selected_diffuse_gammas,
-    bins=10,
-    impact=270 * u.m,
-    sample_fraction=1.0,
-    fov=4.5 * u.deg,
-    smoothing=0,
-):
-    '''
-    See here what that format is supposed to look like:
-    http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
-    '''
-
-    shower_energy = (corsika_showers.energy.values * u.GeV).to('TeV')
-    true_event_energy = (selected_diffuse_gammas.corsika_event_header_total_energy.values * u.GeV).to('TeV')
-    offset = calculate_fov_offset(selected_diffuse_gammas)
-
-    if np.isscalar(bins):
-        low = np.log10(shower_energy.min().value)
-        high = np.log10(shower_energy.max().value)
-        bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
-    else:
-        low = bins.min()
-        high = bins.max()
-        bin_edges = bins
-
-    energy_lo = bin_edges[np.newaxis, :-1]
-    energy_hi = bin_edges[np.newaxis, 1:]
-
-    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=5)
-    theta_lo = theta_bin_edges[np.newaxis, :-1]
-    theta_hi = theta_bin_edges[np.newaxis, 1:]
-
-    areas = []
-    for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= offset.value) & (offset.value < upper)
-        f = (upper**2 - lower**2) / ((fov.value / 2) ** 2) * sample_fraction
-
-        r = collection_area(
-            shower_energy,
-            true_event_energy[m],
-            impact=impact,
-            bins=bin_edges,
-            sample_fraction=f,
-            smoothing=smoothing,
-        )
-
-        area, bin_center, bin_width, lower_conf, upper_conf = r
-        areas.append(area.value)
-
-    area = np.vstack(areas)
-    area = area[np.newaxis, :] * u.m**2
-
-    t = Table(
-        {
-            'ENERG_LO': energy_lo * u.TeV,
-            'ENERG_HI': energy_hi * u.TeV,
-            'THETA_LO': theta_lo * u.deg,
-            'THETA_HI': theta_hi * u.deg,
-            'EFFAREA': area,
-        }
-    )
-
-    t.meta['HDUCLAS1'] = 'RESPONSE'
-    t.meta['HDUCLAS2'] = 'EFF_AREA'
-    t.meta['HDUCLAS3'] = 'POINT-LIKE'
-    t.meta['HDUCLAS4'] = 'AEFF_2D'
-    t.meta['EXTNAME'] = 'EFFECTIVE AREA'
-    t.meta['HDUDOC'] = 'https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html'
-
-    return t
 
 
 def histograms(

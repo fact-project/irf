@@ -1,12 +1,10 @@
 import astropy.units as u
 import numpy as np
-import datetime
-from astropy.table import Table
-from irf.oga import calculate_fov_offset
 from scipy.ndimage.filters import gaussian_filter
 
 
-def make_energy_bins(energy_true, energy_prediction, bins):
+
+def _make_energy_bins(energy_true, energy_prediction, bins):
     e_min = min(
         min(energy_true),
         min(energy_prediction)
@@ -24,73 +22,40 @@ def make_energy_bins(energy_true, energy_prediction, bins):
     return bin_edges
 
 
-@u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV, event_offset=u.deg)
-def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, theta_bins=3, smoothing=0):
-    '''
-    See here what that format is supposed to look like:
-    http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
-    '''
-
-    true_event_energy = (selected_events.corsika_event_header_total_energy.values * u.GeV).to('TeV')
-    predicted_event_energy = (selected_events.gamma_energy_prediction.values * u.GeV).to('TeV')
-    event_offset = calculate_fov_offset(selected_events)
-
-    if np.isscalar(bins):
-        bins_e_true = make_energy_bins(true_event_energy, predicted_event_energy, bins)
-    else:
-        bins_e_true = bins
-
-    bins_mu = np.linspace(0, 6, endpoint=True, num=len(bins_e_true))
-
-    energy_lo = bins_e_true[np.newaxis, :-1]
-    energy_hi = bins_e_true[np.newaxis, 1:]
-
-    migra_lo = bins_mu[np.newaxis, :-1]
-    migra_hi = bins_mu[np.newaxis, 1:]
-
-    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=theta_bins + 1)
-    theta_lo = theta_bin_edges[np.newaxis, :-1]
-    theta_hi = theta_bin_edges[np.newaxis, 1:]
-
-    migras = []
-    for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= event_offset.value) & (event_offset.value < upper)
-        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins_energy=bins_e_true, bins_mu=bins_mu, normalize=True, smoothing=smoothing)
-        migras.append(migra.T)
-
-    matrix = np.stack(migras)[np.newaxis, :]
-
-    t = Table(
-        {
-            'ENERG_LO': energy_lo * u.TeV,
-            'ENERG_HI': energy_hi * u.TeV,
-            'MIGRA_LO': migra_lo,
-            'MIGRA_HI': migra_hi,
-            'THETA_LO': theta_lo * u.deg,
-            'THETA_HI': theta_hi * u.deg,
-            'MATRIX': matrix,
-        }
-    )
-
-    t.meta['DATE'] = datetime.datetime.now().replace(microsecond=0).isoformat()
-    t.meta['TELESCOP'] = 'FACT'
-    t.meta['HDUCLASS'] = 'GADF'
-    t.meta['HDUCLAS1'] = 'RESPONSE'
-    t.meta['HDUCLAS2'] = 'EDISP'
-    t.meta['HDUCLAS3'] = 'POINT-LIKE'
-    t.meta['HDUCLAS4'] = 'EDISP_2D'
-    t.meta['EXTNAME'] = 'ENERGY DISPERSION'
-    t.meta['HDUDOC'] = 'https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/edisp/index.html'
-
-    return t
-
-
-
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
 def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, smoothing=0):
+    '''
+    Creates energy dispersion matrix i.e. a histogram of e_reco vs e_true.
+
+    Parameters
+    ----------
+
+    energy_true : astropy.unit.Quantity (TeV)
+        the true event energy
+    energy_prediction: astropy.unit.Quantity (TeV)
+        the predicted event energy
+    bins_energy : int or arraylike
+        the energy bins.
+    normalize : bool
+        Whether to normalize the matrix.
+    smoothing : float
+        Amount of smoothing to apply to the generated matrices.
+        Equivalent to the sigma parameter in
+        https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
+    Returns
+    -------
+
+    array
+        the migration matrix
+    astropy.unit.Quantity
+        the bin edges for the true energy axis
+    astropy.unit.Quantity
+        the bin edges for the predicted energy axis
+
+    '''
     if np.isscalar(bins):
-        bins = make_energy_bins(energy_true, energy_prediction, bins)
+        bins = _make_energy_bins(energy_true, energy_prediction, bins)
 
     hist, bins_e_true, bins_e_prediction = np.histogram2d(
         energy_true.value,
@@ -102,20 +67,49 @@ def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, 
         hist = gaussian_filter(hist, sigma=smoothing)
 
     if normalize:
-        h = hist.T
-        h = h / h.sum(axis=0)
-        hist = np.nan_to_num(h).T
-
-
+        with np.errstate(invalid='ignore'):
+            h = hist.T
+            h = h / h.sum(axis=0)
+            hist = np.nan_to_num(h).T
 
     return hist, bins_e_true * energy_true.unit, bins_e_prediction * energy_true.unit
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
 def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10, normalize=True, smoothing=0):
+    '''
+    Creates energy migration matrix i.e. a histogram of e_reco/e_true vs e_trueself.
 
+    Parameters
+    ----------
+
+    energy_true : astropy.unit.Quantity (TeV)
+        the true event energy
+    energy_prediction: astropy.unit.Quantity (TeV)
+        the predicted event energy
+    bins_energy : int or arraylike
+        the energy bins.
+    bins_mu : int or arraylike
+        the bins to use for the y axis.
+    normalize : bool
+        Whether to normalize the matrix.
+    smoothing : float
+        Amount of smoothing to apply to the generated matrices.
+        Equivalent to the sigma parameter in
+        https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
+    Returns
+    -------
+
+    array
+        the migration matrix
+    astropy.unit.Quantity
+        the bin edges for the energy axis
+    array
+        the bin edges for the migration axis
+
+    '''
     if np.isscalar(bins_energy):
-        bins_energy = make_energy_bins(energy_true, energy_prediction, bins_energy)
+        bins_energy = _make_energy_bins(energy_true, energy_prediction, bins_energy)
 
     migra = (energy_prediction / energy_true).si.value
 
