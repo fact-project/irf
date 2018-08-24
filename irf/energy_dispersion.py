@@ -77,9 +77,10 @@ def energy_dispersion_to_irf_table(selected_events, fov=4.5 * u.deg, bins=10, th
     t.meta['HDUCLASS'] = 'GADF'
     t.meta['HDUCLAS1'] = 'RESPONSE'
     t.meta['HDUCLAS2'] = 'EDISP'
-    t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
+    t.meta['HDUCLAS3'] = 'POINT-LIKE'
     t.meta['HDUCLAS4'] = 'EDISP_2D'
     t.meta['EXTNAME'] = 'ENERGY DISPERSION'
+    t.meta['HDUDOC'] = 'https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/edisp/index.html'
 
     return t
 

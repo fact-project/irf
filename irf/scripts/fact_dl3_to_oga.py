@@ -197,23 +197,29 @@ def diagnostic_plots(gamma_events, dl3_events, theta_square_cut, prediction_thre
 
 
 def write_irf(output_directory, corsika_showers, gamma_events, prediction_threshold, theta_square_cut, irf_path='fact_irf.fits'):
-    q = f'theta_deg <= {np.sqrt(theta_square_cut)} & gamma_prediction >= {prediction_threshold}'
+    rad_max = np.sqrt(theta_square_cut)
+    q = f'theta_deg <= {rad_max} & gamma_prediction >= {prediction_threshold}'
 
     selected_gamma_events = gamma_events.query(q).copy()
+
     min_energy = selected_gamma_events.corsika_event_header_total_energy.min() * u.GeV
     max_energy = selected_gamma_events.corsika_event_header_total_energy.max() * u.GeV
-    energy_bins = np.logspace(np.log10(min_energy.to('TeV').value), np.log10(max_energy.to('TeV').value), endpoint=True, num=25 + 1)
+    energy_bins = np.logspace(
+                        np.log10(min_energy.to('TeV').value),
+                        np.log10(max_energy.to('TeV').value),
+                        endpoint=True,
+                        num=25 + 1
+                )
+
     collection_table = collection_area_to_irf_table(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8)
     e_disp_table = energy_dispersion_to_irf_table(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=0.8)
 
     primary_hdu = oga.create_primary_hdu()
     collection_hdu = fits.table_to_hdu(collection_table)
-    collection_hdu.header['HDUCLAS3'] = 'POINT-LIKE'
-    collection_hdu.header['RAD_MAX'] = np.sqrt(theta_square_cut)
+    oga.add_meta_information_to_hdu(collection_hdu, RAD_MAX=rad_max)
 
     e_disp_hdu = fits.table_to_hdu(e_disp_table)
-    e_disp_hdu.header['HDUCLAS3'] = 'POINT-LIKE'
-    e_disp_hdu.header['RAD_MAX'] = np.sqrt(theta_square_cut)
+    oga.add_meta_information_to_hdu(e_disp_hdu, RAD_MAX=rad_max)
 
     hdulist = fits.HDUList([primary_hdu, collection_hdu, e_disp_hdu])
     hdulist.writeto(os.path.join(output_directory, 'fact_irf.fits'), overwrite=True)
@@ -232,26 +238,16 @@ def write_dl3(output_directory, dl3_events, runs):
     hdulist.writeto(os.path.join(output_directory, 'hdu-index.fits.gz'), overwrite=True)
 
 
-
-    obs_ids = []
     runs = runs.copy().set_index(['night', 'run_id'])
     for n, g in tqdm(dl3_events.groupby(['night', 'run_id'])):
-
-        obs_ids.append(int(n[0] * 1E3 + n[1]))
 
         run_data = g.copy()
         primary_hdu = oga.create_primary_hdu()
         gti_hdu = oga.create_gti_hdu(runs.loc[n])
-        event_hdu = oga.create_dl3_hdu(run_data, runs.loc[n])
+        event_hdu = oga.create_events_hdu(run_data, runs.loc[n])
         hdulist = fits.HDUList([primary_hdu, gti_hdu, event_hdu])
         fname = f'{n[0]}_{n[1]}_dl3.fits'
         hdulist.writeto(os.path.join(output_directory, fname), overwrite=True)
-
-    pd.DataFrame({'OBS_ID': obs_ids}).to_csv(
-        os.path.join(output_directory, 'observations.csv'),
-        header=True,
-        index=False
-    )
 
 
 if __name__ == '__main__':

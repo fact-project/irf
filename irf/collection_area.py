@@ -76,14 +76,13 @@ def collection_area_to_irf_table(
         }
     )
 
-    t.meta['DATE'] = datetime.datetime.now().replace(microsecond=0).isoformat()
-    t.meta['TELESCOP'] = 'FACT    '
-    t.meta['HDUCLASS'] = 'OGIP    '
     t.meta['HDUCLAS1'] = 'RESPONSE'
     t.meta['HDUCLAS2'] = 'EFF_AREA'
-    t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
-    t.meta['HDUCLAS4'] = '2D      '
+    t.meta['HDUCLAS3'] = 'POINT-LIKE'
+    t.meta['HDUCLAS4'] = 'AEFF_2D'
     t.meta['EXTNAME'] = 'EFFECTIVE AREA'
+    t.meta['HDUDOC'] = 'https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html'
+
     return t
 
 

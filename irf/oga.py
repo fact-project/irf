@@ -15,6 +15,7 @@ from astropy.table import Table
 from astropy.time import Time
 import numpy as np
 from astropy.coordinates.angle_utilities import angular_separation
+import datetime
 
 
 # the timestamps in the fits files need a reference MJD time according to some (ogip?) standard.
@@ -52,12 +53,16 @@ def calculate_fov_offset(df):
     return angular_separation(pointing_lon, pointing_lat, source_lon, source_lat).to('deg')
 
 
-def observation_id(night, run):
+def observation_ids(runs):
     '''
-    Creates a single integer from the night and run numbers.
+    Creates a single integer from the night and run numbers for given run(s)
     '''
-    obs_id = (night * 1E3 + run).values
-    return obs_id.astype(int)
+
+    if isinstance(runs, pd.core.series.Series) and 'night' not in runs:
+        return int(runs.name[0] * 1E3 + runs.name[1])
+
+    return np.array(runs.night * 1E3 + runs.run_id).astype(np.int)
+
 
 
 def file_names_from_run_table(runs):
@@ -101,10 +106,11 @@ def create_gti_hdu(run):
     t = Table({'START': start_time, 'STOP': stop_time})
     hdu = fits.table_to_hdu(t)
     add_time_information_to_hdu(hdu)
-
+    add_meta_information_to_hdu(hdu)
     hdu.header['EXTNAME'] = 'GTI'
-    hdu.header['CREATOR'] = 'FACT IRF'
-    hdu.header['TELESCOP'] = 'FACT'
+    hdu.header['HDUDOC'] = 'https://gamma-astro-data-formats.readthedocs.io/en/latest/events/gti.html#iact-gti'
+    hdu.header['HDUCLAS1'] = 'GTI'
+
     return hdu
 
 
@@ -114,7 +120,7 @@ def create_primary_hdu():
     '''
     header = fits.Header()
 
-    header['OBSERVER'] = 'The non-insane FACT guys '
+    header['OBSERVER'] = 'The FACT collaboration'
     header['COMMENT'] = 'FACT OGA.'
     header['COMMENT'] = 'See https://gamma-astro-data-formats.readthedocs.io/en/latest/'
     header['COMMENT'] = 'This file was created by https://github.com/fact-project/irf'
@@ -126,7 +132,7 @@ def create_primary_hdu():
     return fits.PrimaryHDU(header=header)
 
 
-def create_dl3_hdu(dl3, run):
+def create_events_hdu(dl3, run):
     '''
     Takes a pandas dataframe which contains the DL3 Information and creates an hdu
     according to the standard found here:
@@ -150,11 +156,15 @@ def create_dl3_hdu(dl3, run):
     timestamp = timestamp_to_mjdref(dl3.timestamp)
     t = Table({'EVENT_ID': event_id, 'ENERGY': energy, 'DEC': dec, 'RA': ra, 'TIME': timestamp})
     hdu = fits.table_to_hdu(t)
+
+    # add information to HDU header
     add_time_information_to_hdu(hdu)
-    hdu.header['EUNIT'] = 'TeV'
+    add_meta_information_to_hdu(hdu)
     hdu.header['EXTNAME'] = 'EVENTS'
-    hdu.header['CREATOR'] = 'FACT IRF'
-    hdu.header['TELESCOP'] = 'FACT'
+    hdu.header['HDUCLAS1'] = 'EVENTS'
+    hdu.header['OBS_ID'] = observation_ids(run)
+    hdu.header['OBJECT'] = run.source
+    hdu.header['HDUDOC'] = 'https://gamma-astro-data-formats.readthedocs.io/en/latest/events/events.html'
     d = ontime_info_from_runs(run)
     extend_hdu_header(hdu.header, d)
 
@@ -180,7 +190,7 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
     file_name = np.append(f, p)
     hdu_name = np.repeat(['EVENTS', 'EFFECTIVE AREA', 'ENERGY DISPERSION'], len(runs))
 
-    obs_id = np.tile(observation_id(runs.night, runs.run_id), 3)
+    obs_id = np.tile(observation_ids(runs), 3)
 
     d = {
         'OBS_ID': obs_id,
@@ -193,14 +203,73 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
 
     hdu = fits.table_to_hdu(Table(d))
     add_time_information_to_hdu(hdu)
-    hdu.header['EUNIT'] = 'TeV'
+    add_meta_information_to_hdu(hdu)
     hdu.header['EXTNAME'] = 'HDU_INDEX'
-    hdu.header['CREATOR'] = 'FACT IRF'
-    hdu.header['TELESCOP'] = 'FACT'
+    return hdu
+
+
+def create_observation_index_hdu(runs):
+    '''
+    Takes a pandas dataframe which contains the information about runs.
+    Take all the mandatory keywords found here:
+    http://gamma-astro-data-formats.readthedocs.io/en/latest/data_storage/obs_index/index.html
+
+    returns a fits hdu object
+    '''
+    obs_id = observation_ids(runs)
+    ra_pnt = runs.right_ascension.values * u.hourangle
+    ra_pnt = ra_pnt.to('deg')
+
+    dec_pnt = runs.declination.values * u.deg
+
+    zen_pnt = runs.zenith.values * u.deg
+    alt_pnt = (90 - runs.zenith.values) * u.deg
+    az_pnt = runs.azimuth.values * u.deg
+
+
+    n_tels = np.ones_like(obs_id)
+    tellist = np.ones_like(obs_id).astype(np.str)
+    quality = np.zeros_like(obs_id)
+
+    d = {
+        'OBS_ID': obs_id,
+        'RA_PNT': ra_pnt,
+        'DEC_PNT': dec_pnt,
+        'ZEN_PNT': zen_pnt,
+        'ALT_PNT': alt_pnt,
+        'AZ_PNT': az_pnt,
+        'N_TELS': n_tels,
+        'TELLIST': tellist,
+        'QUALITY': quality,
+        **ontime_info_from_runs(runs)
+    }
+
+    hdu = fits.table_to_hdu(Table(d))
+
+    hdu.header['EXTNAME'] = 'OBS_INDEX'
+
+    add_meta_information_to_hdu(hdu)
+    add_time_information_to_hdu(hdu)
     return hdu
 
 
 def ontime_info_from_runs(runs):
+    '''
+    Calculates ontime information from (one or more) FACT runs as
+    stored in the dl2 FACT hdf5 files.
+
+    Parameters
+    ----------
+    runs : pd.DataFrame or pd.Series
+        the runs as given in FACTS DL2 hdf5 files
+
+    Returns
+    -------
+    dict
+        returns dict containing necessary ontime Information
+        as described here:
+        https://gamma-astro-data-formats.readthedocs.io/en/latest/events/events.html
+    '''
 
     # to make this work for a single run (a pandas series) convert to table
     if isinstance(runs, pd.core.series.Series):
@@ -249,49 +318,6 @@ def ontime_info_from_runs(runs):
     }
 
 
-def create_observation_index_hdu(runs):
-    '''
-    Takes a pandas dataframe which contains the information about runs.
-    Take all the mandatory keywords found here:
-    http://gamma-astro-data-formats.readthedocs.io/en/latest/data_storage/obs_index/index.html
-
-    returns a fits hdu object
-    '''
-    obs_id = observation_id(runs.night, runs.run_id)
-    ra_pnt = runs.right_ascension.values * u.hourangle
-    ra_pnt = ra_pnt.to('deg')
-
-    dec_pnt = runs.declination.values * u.deg
-
-    zen_pnt = runs.zenith.values * u.deg
-    alt_pnt = (90 - runs.zenith.values) * u.deg
-    az_pnt = runs.azimuth.values * u.deg
-
-
-    n_tels = np.ones_like(obs_id)
-    tellist = np.ones_like(obs_id).astype(np.str)
-    quality = np.zeros_like(obs_id)
-
-    d = {
-        'OBS_ID': obs_id,
-        'RA_PNT': ra_pnt,
-        'DEC_PNT': dec_pnt,
-        'ZEN_PNT': zen_pnt,
-        'ALT_PNT': alt_pnt,
-        'AZ_PNT': az_pnt,
-        'N_TELS': n_tels,
-        'TELLIST': tellist,
-        'QUALITY': quality,
-        **ontime_info_from_runs(runs)
-    }
-
-    hdu = fits.table_to_hdu(Table(d))
-    hdu.header['EUNIT'] = 'TeV'
-    hdu.header['EXTNAME'] = 'OBS_INDEX'
-    add_time_information_to_hdu(hdu)
-    return hdu
-
-
 def add_time_information_to_hdu(hdu):
     '''
     Takes an hdu object and adds information about FACTs time reference to it.
@@ -306,3 +332,31 @@ def add_time_information_to_hdu(hdu):
     hdu_header['GEOLON'] = -17.890701
     hdu_header['GEOLAT'] = 28.761795
     hdu_header['ALTITUDE'] = 2199.4
+    hdu_header['TIMEUNIT'] = 's'
+
+
+def add_meta_information_to_hdu(hdu, **kwargs):
+    '''
+    Takes an hdu object and adds meta information as required by the open gamma ray astro
+    format to its header
+
+    For now thats
+    HDUVERS
+    HDUCLASS
+    TELESCOP
+    CREATOR
+    RADECSYS
+    EQUINOX
+    EUNIT
+    DATE
+    '''
+    hdu.header['CREATOR'] = 'FACT IRF. See https://github.com/fact-project/irf'
+    hdu.header['TELESCOP'] = 'FACT'
+    hdu.header['HDUCLASS'] = 'GADF'
+    hdu.header['HDUVERS'] = '0.2'
+    hdu.header['EQUINOX'] = '2000.0'
+    hdu.header['RADECSYS'] = 'ICRS'
+    hdu.header['EUNIT'] = 'TeV'
+    hdu.header['DATE'] = datetime.datetime.now().replace(microsecond=0).isoformat()
+    if kwargs:
+        extend_hdu_header(hdu.header, kwargs)
