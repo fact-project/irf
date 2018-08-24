@@ -84,6 +84,9 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
         'aux_pointing_position_az',
         'source_position_az',
         'source_position_zd'.
+
+    This script will additionally produce a file called 'plots.png' in the given output_directory
+    for debugging purposes. 
     '''
 
     os.makedirs(output_directory, exist_ok=True)
