@@ -132,8 +132,9 @@ def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10,
         hist = gaussian_filter(hist, sigma=smoothing, )
 
     if normalize:
-        h = hist.T
-        h = h / h.sum(axis=0)
-        hist = np.nan_to_num(h).T
+        with np.errstate(invalid='ignore'):
+            h = hist.T
+            h = h / h.sum(axis=0)
+            hist = np.nan_to_num(h).T
 
     return hist, bins_energy * energy_true.unit, bins_mu
