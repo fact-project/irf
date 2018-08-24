@@ -38,7 +38,7 @@ def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, 
     bins_energy : int or arraylike
         the energy bins.
     normalize : bool
-        Whether to normalize the matrix.
+        Whether to normalize the matrix. The sum of each column will be equal to 1
     smoothing : float
         Amount of smoothing to apply to the generated matrices.
         Equivalent to the sigma parameter in
@@ -92,7 +92,7 @@ def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10,
     bins_mu : int or arraylike
         the bins to use for the y axis.
     normalize : bool
-        Whether to normalize the matrix.
+        Whether to normalize the matrix. The sum of each column will be equal to 1
     smoothing : float
         Amount of smoothing to apply to the generated matrices.
         Equivalent to the sigma parameter in
@@ -114,7 +114,7 @@ def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10,
     migra = (energy_prediction / energy_true).si.value
 
     if np.isscalar(bins_mu):
-        bins_mu = np.linspace(0, 6, endpoint=True, num=len(bins_energy))
+        bins_mu = np.linspace(0, 6, endpoint=True, num=bins_mu + 1)
 
     hist, bins_e_true, bins_mu = np.histogram2d(
         energy_true.value,
