@@ -1,7 +1,7 @@
 import fact.io
 import os
 import pytest
-from irf import energy_dispersion, energy_dispersion_to_irf_table
+from irf import energy_dispersion
 import astropy.units as u
 import numpy as np
 
@@ -31,9 +31,3 @@ def test_dispersion(predictions):
     assert bins_e_true[0] < bins_e_true[-1]
     np.testing.assert_array_equal(bins_e_true, bins_e_prediction)
     assert bins_e_true.unit == u.GeV
-
-
-def test_irf_writing(predictions):
-    t = energy_dispersion_to_irf_table(predictions, bins=5, theta_bins=1)
-    assert len(t) == 1
-    assert t['MATRIX'].data.shape == (1, 1, 5, 5)

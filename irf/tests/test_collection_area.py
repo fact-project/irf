@@ -1,7 +1,7 @@
 import fact.io
 import os
 import pytest
-from irf import collection_area, collection_area_to_irf_table
+from irf import collection_area
 import astropy.units as u
 import numpy as np
 
@@ -82,14 +82,3 @@ def test_scatter_radius(showers, predictions):
 
     # effective area should be four times as high if impact is twice as high
     np.testing.assert_array_equal(4 * area_lower.value, area_higher.value)
-
-
-
-
-def test_irf_writing(showers, predictions, tmpdir):
-    t = collection_area_to_irf_table(showers, predictions, bins=6)
-    assert t['ENERG_LO'].shape == (1, 6)
-    assert t['ENERG_LO'].unit == u.TeV
-    assert t['EFFAREA'].shape == (1, 4, 6)
-    assert t['EFFAREA'].unit == u.m**2
-    assert len(t) == 1

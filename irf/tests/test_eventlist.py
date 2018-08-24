@@ -8,7 +8,7 @@ FIXTURE_DIR = os.path.join(
 )
 
 
-def test_roundtrip():
+def test_script():
     runner = CliRunner()
 
     import tempfile
