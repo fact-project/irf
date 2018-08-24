@@ -73,7 +73,7 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     '''
     Takes FACT Corsika information (SHOWERS), FACT (diffuse) MC data (PREDICTIONS)
     and FACT observations (DL3) as input and writes DL3 data and IRFs according
-    to the open gamma-ray astro format to OUTPUT_DIRECTORY.
+    to the open gamma-ray astro data format (GADF) to OUTPUT_DIRECTORY.
 
     The (PREDICTIONS) file needs to have the following columns:
         'theta_deg',
@@ -86,7 +86,8 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
         'source_position_zd'.
 
     This script will additionally produce a file called 'plots.png' in the given output_directory
-    for debugging purposes. 
+    for debugging purposes.
+
     '''
 
     os.makedirs(output_directory, exist_ok=True)
