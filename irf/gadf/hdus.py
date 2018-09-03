@@ -98,16 +98,17 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
     returns a fits hdu object
     '''
 
-    hdu_type = np.repeat(['events', 'aeff', 'edisp'], len(runs))
-    hdu_class = np.repeat(['events', 'aeff_2d', 'edisp_2d'], len(runs))
-    file_dir = np.repeat('./', 3 * len(runs))
+    hdu_type = np.repeat(['events', 'gti', 'aeff', 'edisp'], len(runs))
+    hdu_class = np.repeat(['events', 'gti', 'aeff_2d', 'edisp_2d'], len(runs))
+    file_dir = np.repeat('./', 4 * len(runs))
 
-    f = _file_names_from_run_table(runs)
+    # build filenames pointing to the evtns, gti and aeff and edisp
+    f = np.repeat(_file_names_from_run_table(runs), 2)
     p = np.repeat(path_to_irf_file, 2 * len(runs))
     file_name = np.append(f, p)
-    hdu_name = np.repeat(['EVENTS', 'EFFECTIVE AREA', 'ENERGY DISPERSION'], len(runs))
+    hdu_name = np.repeat(['EVENTS', 'GTI', 'EFFECTIVE AREA', 'ENERGY DISPERSION'], len(runs))
 
-    obs_id = np.tile(_observation_ids(runs), 3)
+    obs_id = np.tile(_observation_ids(runs), 4)
 
     d = {
         'OBS_ID': obs_id,
@@ -121,6 +122,9 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
     hdu = fits.table_to_hdu(Table(d))
     add_meta_information_to_hdu(hdu)
     hdu.header['EXTNAME'] = 'HDU_INDEX'
+    hdu.header['HDUCLASS'] = 'GADF'
+    hdu.header['HDUCLAS1'] = 'INDEX'
+    hdu.header['HDUCLAS2'] = 'HDU'
     return hdu
 
 
@@ -163,6 +167,9 @@ def create_observation_index_hdu(runs):
     hdu = fits.table_to_hdu(Table(d))
 
     hdu.header['EXTNAME'] = 'OBS_INDEX'
+    hdu.header['HDUCLASS'] = 'GADF'
+    hdu.header['HDUCLAS1'] = 'INDEX'
+    hdu.header['HDUCLAS2'] = 'OBS'
 
     add_meta_information_to_hdu(hdu)
     return hdu
@@ -175,6 +182,8 @@ def add_meta_information_to_hdu(hdu, **kwargs):
     '''
     hdu.header['CREATOR'] = ('FACT IRF', 'See https://github.com/fact-project/irf')
     hdu.header['TELESCOP'] = ('FACT', 'The First G-APD Cherenkov Telescope.')
+    hdu.header['INSTRUME'] = 'FACT'
+    hdu.header['ORIGIN'] = 'FACT'
     hdu.header['HDUCLASS'] = ('GADF', 'Gamma-Ray Astro Data Format')
     hdu.header['HDUDOC'] = 'https://gamma-astro-data-formats.readthedocs.io'
     hdu.header['HDUVERS'] = '0.2'
