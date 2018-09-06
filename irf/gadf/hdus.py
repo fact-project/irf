@@ -103,9 +103,10 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
     file_dir = np.repeat('./', 4 * len(runs))
 
     # build filenames pointing to the evtns, gti and aeff and edisp
-    f = np.repeat(_file_names_from_run_table(runs), 2)
+    f = np.tile(_file_names_from_run_table(runs), 2)
     p = np.repeat(path_to_irf_file, 2 * len(runs))
     file_name = np.append(f, p)
+    
     hdu_name = np.repeat(['EVENTS', 'GTI', 'EFFECTIVE AREA', 'ENERGY DISPERSION'], len(runs))
 
     obs_id = np.tile(_observation_ids(runs), 4)
