@@ -245,9 +245,11 @@ def write_dl3(output_directory, dl3_events, runs, prediction_threshold=0.85):
 
     gammalike_data_events = dl3_events.query(f'gamma_prediction >= {prediction_threshold}')
 
+    obs_ids = []
     runs = runs.set_index(['night', 'run_id'])
     for n, run_data in tqdm(gammalike_data_events.groupby(['night', 'run_id'])):
         file_name = f'{n[0]}_{n[1]}_dl3.fits'
+        obs_ids.append(int(n[0] * 1E3 + n[1]))
 
         primary_hdu = hdus.create_primary_hdu()
         gti_hdu = hdus.create_gti_hdu(runs.loc[n])
@@ -257,6 +259,12 @@ def write_dl3(output_directory, dl3_events, runs, prediction_threshold=0.85):
         hdulist = fits.HDUList([primary_hdu, gti_hdu, event_hdu])
         hdulist.writeto(os.path.join(output_directory, file_name), overwrite=True)
 
+    
+    pd.DataFrame({'OBS_ID': obs_ids}).to_csv(
+        os.path.join(output_directory, 'observations.csv'),
+        header=True,
+        index=False
+    )
 
 if __name__ == '__main__':
     main()
