@@ -93,22 +93,6 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     os.makedirs(output_directory, exist_ok=True)
 
     dl3_events = fact.io.read_h5py(dl3, key='events')
-
-    if start:
-        dt = parse(start)
-        m = pd.to_datetime(dl3_events.timestamp) >= dt
-        dl3_events = dl3_events[m]
-
-    if end:
-        dt = parse(end)
-        m = pd.to_datetime(dl3_events.timestamp) < dt
-        dl3_events = dl3_events[m]
-
-    gamma_events = fact.io.read_data(predictions, key='events', columns=columns_to_read)
-
-    diagnostic_plots(gamma_events, dl3_events, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
-    plt.savefig(os.path.join(output_directory, 'plots.png'))
-
     runs = fact.io.read_h5py(dl3, key='runs')
 
     if start:
@@ -120,6 +104,13 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
         dt = parse(end)
         m = pd.to_datetime(runs.run_stop) < dt
         runs = runs[m]
+
+    dl3_events = pd.merge(dl3_events, runs, on=['night', 'run_id'])
+
+    gamma_events = fact.io.read_data(predictions, key='events', columns=columns_to_read)
+
+    diagnostic_plots(gamma_events, dl3_events, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
+    plt.savefig(os.path.join(output_directory, 'plots.png'))
 
     print(f'Total ontime: {runs.ontime.sum()/60/60} hours')
 
@@ -252,6 +243,7 @@ def write_dl3(output_directory, dl3_events, runs, prediction_threshold=0.85):
         obs_ids.append(int(n[0] * 1E3 + n[1]))
 
         primary_hdu = hdus.create_primary_hdu()
+
         gti_hdu = hdus.create_gti_hdu(runs.loc[n])
         event_hdu = hdus.create_events_hdu(run_data, runs.loc[n])
         event_hdu.header['PRED_MAX'] = (prediction_threshold, 'prediction threshold used to select events')
@@ -259,7 +251,7 @@ def write_dl3(output_directory, dl3_events, runs, prediction_threshold=0.85):
         hdulist = fits.HDUList([primary_hdu, gti_hdu, event_hdu])
         hdulist.writeto(os.path.join(output_directory, file_name), overwrite=True)
 
-    
+
     pd.DataFrame({'OBS_ID': obs_ids}).to_csv(
         os.path.join(output_directory, 'observations.csv'),
         header=True,

@@ -77,11 +77,19 @@ def create_events_hdu(dl3, run):
     hdu = fits.table_to_hdu(t)
 
     # add information to HDU header
+    ra_pnt = run.right_ascension * u.hourangle
+    ra_pnt = ra_pnt.to('deg')
+    dec_pnt = run.declination * u.deg
+
     add_meta_information_to_hdu(hdu)
     hdu.header['EXTNAME'] = 'EVENTS'
     hdu.header['HDUCLAS1'] = 'EVENTS'
     hdu.header['OBS_ID'] = _observation_ids(run)
     hdu.header['OBJECT'] = run.source
+
+    hdu.header['RA_PNT'] = ra_pnt.value
+    hdu.header['DEC_PNT'] = dec_pnt.value
+
     d = ontime_info_from_runs(run)
     _extend_hdu_header(hdu.header, d)
 
@@ -106,7 +114,7 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
     f = np.tile(_file_names_from_run_table(runs), 2)
     p = np.repeat(path_to_irf_file, 2 * len(runs))
     file_name = np.append(f, p)
-    
+
     hdu_name = np.repeat(['EVENTS', 'GTI', 'EFFECTIVE AREA', 'ENERGY DISPERSION'], len(runs))
 
     obs_id = np.tile(_observation_ids(runs), 4)
@@ -142,7 +150,6 @@ def create_observation_index_hdu(runs):
     ra_pnt = ra_pnt.to('deg')
 
     dec_pnt = runs.declination.values * u.deg
-
     zen_pnt = runs.zenith.values * u.deg
     alt_pnt = (90 - runs.zenith.values) * u.deg
     az_pnt = runs.azimuth.values * u.deg
