@@ -248,7 +248,7 @@ def write_dl3(output_directory, dl3_events, runs, prediction_threshold=0.85):
         event_hdu = hdus.create_events_hdu(run_data, runs.loc[n])
         event_hdu.header['PRED_MAX'] = (prediction_threshold, 'prediction threshold used to select events')
 
-        hdulist = fits.HDUList([primary_hdu, gti_hdu, event_hdu])
+        hdulist = fits.HDUList([primary_hdu, event_hdu, gti_hdu])
         hdulist.writeto(os.path.join(output_directory, file_name), overwrite=True)
 
 
@@ -257,6 +257,7 @@ def write_dl3(output_directory, dl3_events, runs, prediction_threshold=0.85):
         header=True,
         index=False
     )
+
 
 if __name__ == '__main__':
     main()
