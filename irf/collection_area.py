@@ -2,7 +2,6 @@ import numpy as np
 
 from astropy.stats import binom_conf_interval
 import astropy.units as u
-from astropy.table import Table
 
 from scipy.ndimage.filters import gaussian_filter
 
@@ -89,9 +88,9 @@ def collection_area_to_irf_table(
 def collection_area(
         mc_production_spectrum,
         event_energies,
-        bins=10,
+        bins,
         smoothing=0,
-        sample_fraction=1,
+        sample_fraction=1.0,
 ):
     '''
     Calculate the collection area for the given events.

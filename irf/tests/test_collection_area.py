@@ -95,9 +95,6 @@ def test_scatter_radius(predictions):
     # effective area should be four times as high if impact is twice as high
     np.testing.assert_array_equal(4 * area_lower.value, area_higher.value)
 
-
-
-
 def test_irf_writing(predictions, tmpdir):
 
     energies = predictions['corsika_event_header_total_energy'].values * u.GeV

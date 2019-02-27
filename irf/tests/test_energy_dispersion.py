@@ -1,7 +1,7 @@
 import fact.io
 import os
 import pytest
-from irf import energy_dispersion, energy_dispersion_to_irf_table
+from irf import energy_dispersion, energy_dispersion_to_irf_table,  energy_migration
 from irf.oga import calculate_fov_offset
 
 import astropy.units as u
@@ -47,3 +47,35 @@ def test_irf_writing(predictions):
     assert t['THETA_HI'].unit == u.deg
     assert t['THETA_LO'].unit == u.deg
     assert len(t) == 1
+    
+def test_migration(predictions):
+    energy_true = predictions['corsika_event_header_total_energy'].values * u.GeV
+    energy_prediction = predictions['gamma_energy_prediction'].values * u.GeV
+
+    hist, bins_e_true, bins_mu = energy_migration(
+        energy_true,
+        energy_prediction,
+        bins_energy=5,
+        bins_mu=10
+    )
+
+    assert hist.shape == (5, 10)
+    assert bins_e_true.unit == u.GeV
+
+
+def test_normalization(predictions):
+    energy_true = predictions['corsika_event_header_total_energy'].values * u.GeV
+    energy_prediction = predictions['gamma_energy_prediction'].values * u.GeV
+
+    hist, bins_e_true, bins_mu = energy_migration(
+        energy_true,
+        energy_prediction,
+        bins_energy=5,
+        bins_mu=10,
+        normalize=True,
+    )
+
+    assert hist.shape == (5, 10)
+    assert bins_e_true.unit == u.GeV
+    # check columns are normalized
+    assert np.allclose(hist.sum(axis=1), np.ones(5))
