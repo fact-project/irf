@@ -69,11 +69,16 @@ columns_to_read = [
     '--end',
     help='max datetime stamp for run selection.',
 )
-def main(showers, predictions, dl3, output_directory, prediction_threshold, theta_square_cut, max_scat, start, end):
+@click.option(
+    '-e', '--exclude',
+    help='runs to exclude in YYMMDD_ID format',
+    multiple=True,
+)
+def main(showers, predictions, dl3, output_directory, prediction_threshold, theta_square_cut, max_scat, start, end, exclude):
     '''
     Takes FACT Corsika information (SHOWERS), FACT (diffuse) MC data (PREDICTIONS)
     and FACT observations (DL3) as input and writes DL3 data and IRFs according
-    to the open gamma-ray astro data format (GADF) to OUTPUT_DIRECTORY.
+    to the open gamma-ray astro data format (OGA) to OUTPUT_DIRECTORY.
 
     The (PREDICTIONS) file needs to have the following columns:
         'theta_deg',
@@ -105,9 +110,17 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
         m = pd.to_datetime(runs.run_stop) < dt
         runs = runs[m]
 
-    dl3_events = pd.merge(dl3_events, runs, on=['night', 'run_id'])
 
+    if exclude:
+        exclusions = np.array([list(map(int, e.split('_'))) for e in exclude])
+        excluded_runs = runs.night.isin(exclusions[:, 0]) & runs.run_id.isin(exclusions[:, 1])
+        print(f'Removed {excluded_runs.sum()} runs from dataset')
+        runs = runs[~excluded_runs]
+
+    dl3_events = pd.merge(dl3_events, runs, on=['night', 'run_id'])
     gamma_events = fact.io.read_data(predictions, key='events', columns=columns_to_read)
+
+
 
     diagnostic_plots(gamma_events, dl3_events, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
     plt.savefig(os.path.join(output_directory, 'plots.png'))
