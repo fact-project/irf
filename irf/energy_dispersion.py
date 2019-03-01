@@ -5,7 +5,6 @@ from astropy.table import Table
 from scipy.ndimage.filters import gaussian_filter
 
 
-
 def _make_energy_bins(energy_true, energy_prediction, bins):
     e_min = min(
         min(energy_true),
@@ -43,11 +42,14 @@ def energy_dispersion_to_irf_table(
     predicted_event_energies = predicted_event_energies.to('TeV')
 
     if np.isscalar(bins):
-        bins_e_true = make_energy_bins(true_event_energies, predicted_event_energies, bins)
+        bins_e_true = _make_energy_bins(true_event_energies, predicted_event_energies, bins)
     else:
         bins_e_true = bins
 
     bins_mu = np.linspace(0, 3, endpoint=True, num=len(bins_e_true))
+
+    print(len(bins_e_true))
+    print(len(bins_mu))
 
     energy_lo = bins_e_true[np.newaxis, :-1]
     energy_hi = bins_e_true[np.newaxis, 1:]
@@ -66,7 +68,14 @@ def energy_dispersion_to_irf_table(
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
         m = (lower <= event_fov_offsets) & (event_fov_offsets < upper)
-        migra, bins_e_true, bins_mu = energy_migration(true_event_energies[m], predicted_event_energies[m], bins=bins_e_true, normalize=True, smoothing=smoothing)
+        migra, bins_e_true, bins_mu = energy_migration(
+            true_event_energies[m],
+            predicted_event_energies[m],
+            bins_energy=bins_e_true,
+            bins_mu=bins_mu,
+            normalize=True,
+            smoothing=smoothing
+        )
         migras.append(migra.T)
 
     matrix = np.stack(migras)[np.newaxis, :]

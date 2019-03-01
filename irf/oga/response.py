@@ -5,7 +5,7 @@ import numpy as np
 from astropy.coordinates.angle_utilities import angular_separation
 from irf.collection_area import collection_area
 from irf.energy_dispersion import energy_migration
-from irf.gadf.hdus import add_meta_information_to_hdu
+from irf.oga.hdus import add_meta_information_to_hdu
 
 
 def _calculate_fov_offset(df):

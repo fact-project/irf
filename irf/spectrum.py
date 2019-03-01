@@ -1,5 +1,7 @@
 import numpy as np
 import astropy.units as u
+from scipy.stats import norm
+from scipy.integrate import quad
 
 
 @u.quantity_input(energies=u.TeV, e_min=u.TeV, e_max=u.TeV)
@@ -195,10 +197,63 @@ class CosmicRaySpectrum(Spectrum):
     BESS Proton spectrum  ApJ 545, 1135 (2000) [arXiv:astro-ph/0002481],
     same as used by K. Bernloehr.
 
+    This is the spectrum of cosmic protons.
     I stole this from the MARS Barcelona code provided by Tarek. H.
     '''
 
     def __init__(self, index=-2.7, normalization_constant=9.6e-9 / (u.GeV * u.cm**2 * u.s * u.sr)):
+        self.index = index
+        self.normalization_constant = normalization_constant
+
+
+class CTAElectronSpectrum(Spectrum):
+    '''
+    See the IRF ASWG report page 22 and 23
+    '''
+
+    def __init__(self, index=-3.43, normalization_constant=2.385E-9 * u.Unit('cm-2 s-1 TeV-1 sr-1')):
+        self.index = index
+        self.normalization_constant = normalization_constant
+
+    def flux(self, energy):
+
+        energy = energy.to('TeV')
+        N = self.normalization_constant * (energy / u.TeV)**(self.index)
+
+        mu = -0.101
+        sigma = 0.741
+        f = 1.95
+        b = (1 + f * (np.exp(norm.pdf(np.log10(energy / u.TeV), loc=mu, scale=sigma)) - 1))
+        flux = N * b
+
+        return flux.to(1 / (u.TeV * u.s * u.cm**2 * u.sr))
+
+    def _integral(self, e_min, e_max):
+        a = e_min.to(u.TeV).value
+        b = e_max.to(u.TeV).value
+
+        result, _ = quad(lambda e: self.flux(e * u.TeV).value, a, b)
+
+        return result * self.normalization_constant.unit * u.TeV
+
+
+class CosmicRaySpectrumPDG(Spectrum):
+    '''
+    PDG Cosmic Ray spectrum. This contains all nucleus types. (proton, helium, iron, ...)
+    '''
+
+    def __init__(self, index=-2.7, normalization_constant=1.8E4 / (0.001**(-2.7)) / (u.sr * u.s * u.m**2 * u.GeV)):
+        self.index = index
+        self.normalization_constant = normalization_constant
+
+
+
+class CTAProtonSpectrum(Spectrum):
+    '''
+    Protons Spectrum as used by the CTA ASWG.
+    '''
+
+    def __init__(self, index=-2.62, normalization_constant=9.8E-6 / (u.sr * u.s * u.cm**2 * u.TeV)):
         self.index = index
         self.normalization_constant = normalization_constant
 
@@ -240,8 +295,8 @@ class MCSpectrum(Spectrum):
             e_max,
             total_showers_simulated,
             generation_area,
-            generator_solid_angle=None,  # default for CTA prod3
-            index=-2.0
+            generator_solid_angle=None,
+            index=-2.0  # default for CTA prod3
     ):
         '''
         To calculate the normalization constant of this spectrum some
@@ -281,6 +336,9 @@ class MCSpectrum(Spectrum):
             N = self._integral(e_min.to('TeV'), e_max.to('TeV')) * (generation_area.to(u.m**2) * u.s)
             self.normalization_constant = (total_showers_simulated / N) / (u.TeV * u.m**2 * u.s)
 
+
+    def __repr__(self):
+        return f'E_Min:{self.e_min}, E_Max:{self.e_max}, N_total:{self.total_showers_simulated}, index:{self.index}, normalization contant:{self.normalization_constant}'
 
     def draw_energy_distribution(self, size):
         return super().draw_energy_distribution(
@@ -336,10 +394,9 @@ class MCSpectrum(Spectrum):
         mc_num_showers = runs.mc_num_showers.sum()
         # assume these numbers are equal for each run
         mc_spectral_index = runs.mc_spectral_index.iloc[0]
-        mc_num_reuse = runs.mc_num_reuse.iloc[0]
-        mc_min_energy = runs.mc_min_energy.iloc[0] * u.TeV
-        mc_max_energy = runs.mc_max_energy.iloc[0] * u.TeV
-        mc_max_energy = runs.mc_max_energy.iloc[0] * u.TeV
+        mc_num_reuse = runs.mc_shower_reuse.iloc[0]
+        mc_min_energy = runs.mc_energy_range_min.iloc[0] * u.TeV
+        mc_max_energy = runs.mc_energy_range_max.iloc[0] * u.TeV
         generation_area = (runs.mc_max_scatter_range.iloc[0] * u.m)**2 * np.pi
         generator_solid_angle = (runs.mc_max_viewcone_radius.iloc[0] - runs.mc_min_viewcone_radius.iloc[0]) * u.deg
 
@@ -363,8 +420,7 @@ class MCSpectrum(Spectrum):
             t_assumed_obs,
     ):
         '''
-        This method returns weights for the given events based on the information
-        about the events generator and the index and normalization of the spectrum.
+        This method returns weights for the given events based on the given spectrum.
         '''
 
         if self.extended_source != other_spectrum.extended_source:
@@ -377,8 +433,19 @@ class MCSpectrum(Spectrum):
         w = A * other_spectrum.flux(event_energies) / self.flux(event_energies)
 
         # at this point the value should have no units left
-        assert w.si.unit.is_unity() == True
+        assert w.si.unit.is_unity() is True
         return w.value
+
+    def equivalent_obstime(self, other_spectrum):   
+        n_events = self.total_showers_simulated
+        integral_flux = other_spectrum._integral(self.e_min, self.e_max)
+        area = self.generation_area
+        t =  n_events / (area * integral_flux)
+        if self.generator_solid_angle and self.generator_solid_angle.to_value(u.deg) > 0:
+            solid_angle = self.generator_solid_angle
+            solid_angle = (1 - np.cos(solid_angle)) * 2 * np.pi * u.sr
+            t /= solid_angle
+        return t.to(u.s)
 
 
 
@@ -397,17 +464,43 @@ if __name__ == '__main__':
 
         m = r > (1 - 0.5 * f(simulated_energies.to('MeV').value))
         print(f'total trigger efficiency: {m.sum() / len(simulated_energies)}')
-        return m
+        return m    
 
-    # executing this will create a plot which is usefull for checking if
-    # the reweighing works correctly
-    import matplotlib.pyplot as plt
+
+
+    crab = CrabSpectrum()
 
     e_min = 0.003 * u.TeV
     e_max = 300 * u.TeV
     area = 1 * u.km**2
-    N = 1000000
+    N = int(1E6)
     simulation_index = -2.0
+
+    mc = MCSpectrum(
+        e_min=e_min,
+        e_max=e_max,
+        total_showers_simulated=N,
+        generation_area=area,
+        index=simulation_index,
+    )
+
+    mc2 = MCSpectrum(
+        e_min=e_min,
+        e_max=e_max,
+        total_showers_simulated=N,
+        generation_area=area * 2,
+        index=simulation_index,
+    )
+    print(mc.expected_events(), N)
+    # assert mc2.expected_events() == N
+    assert mc.generation_area * 2 ==  mc2.generation_area
+    assert mc.expected_events() ==  mc2.expected_events()
+    assert mc.normalization_constant == mc2.normalization_constant * 2
+    assert mc.equivalent_obstime(crab) == mc2.equivalent_obstime(crab) * 2
+    # executing this will create a plot which is usefull for checking if
+    # the reweighing works correctly
+    import matplotlib.pyplot as plt
+
     t_assumed_obs = 50 * u.h
 
     energy_bins, bin_center, bin_width = make_energy_bins(e_min=e_min, e_max=e_max, bins=20)
@@ -422,7 +515,7 @@ if __name__ == '__main__':
 
     random_energies = mc.draw_energy_distribution(N)
 
-    crab = CrabSpectrum()
+
     events = crab.expected_events_for_bins(
         area=area,
         t_obs=t_assumed_obs,
@@ -482,7 +575,7 @@ if __name__ == '__main__':
 
     plt.title('Event Reweighing')
     plt.suptitle('Red line should be on black points')
-    plt.legend()
+    ax1.legend()
     ax1.set_yscale('log')
     ax1.set_xscale('log')
     ax1.set_xlabel('Energy in TeV')

@@ -1,5 +1,5 @@
 import fact.io
-from irf.gadf import response, hdus
+from irf.oga import response, hdus
 from irf import energy_migration, energy_dispersion
 import click
 import os
@@ -40,11 +40,6 @@ columns_to_read = [
     'output_directory',
     type=click.Path(file_okay=False, dir_okay=True, exists=False),
 )
-<<<<<<< HEAD:irf/scripts/fact_dl3_to_oga.py
-@click.option('-c', '--prediction_threshold', type=click.FLOAT, default=0.85)
-@click.option('-t', '--theta_square_cut', type=click.FLOAT, default=0.02)
-def main(predictions, dl3, output_directory, prediction_threshold, theta_square_cut):
-=======
 @click.option(
     '-c', '--prediction_threshold',
     type=click.FLOAT,
@@ -96,7 +91,6 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     for debugging purposes.
 
     '''
->>>>>>> irf_writing:irf/scripts/fact_dl3_to_gadf.py
 
     os.makedirs(output_directory, exist_ok=True)
 
@@ -123,15 +117,6 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     dl3_events = pd.merge(dl3_events, runs, on=['night', 'run_id'])
     gamma_events = fact.io.read_data(predictions, key='events', columns=columns_to_read)
 
-<<<<<<< HEAD:irf/scripts/fact_dl3_to_oga.py
-    energy_bins = np.logspace(np.log10(0.2), np.log10(50), endpoint=True, num=25 + 1) * u.TeV
-
-    # prodcution settings for diffuse gammas (gustav plus werner)
-    n_showers = 12E6
-    area = (270 * u.m)**2 * np.pi
-    mc_production_spectrum = MCSpectrum(200 * u.GeV, 50 * u.TeV, n_showers, area, index=-2.7)
-=======
->>>>>>> irf_writing:irf/scripts/fact_dl3_to_gadf.py
 
 
     diagnostic_plots(gamma_events, dl3_events, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
@@ -141,12 +126,8 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
 
     write_dl3(output_directory, dl3_events, runs, prediction_threshold=prediction_threshold)
 
-<<<<<<< HEAD:irf/scripts/fact_dl3_to_oga.py
-    write_irf(output_directory, mc_production_spectrum, gamma_events, prediction_threshold, theta_square_cut, energy_bins)
-=======
     showers = fact.io.read_data(showers, key='showers')
     write_irf(output_directory, showers, gamma_events, prediction_threshold, theta_square_cut)
->>>>>>> irf_writing:irf/scripts/fact_dl3_to_gadf.py
 
 
 def diagnostic_plots(gamma_events, dl3_events, theta_square_cut, prediction_threshold):
@@ -204,11 +185,7 @@ def diagnostic_plots(gamma_events, dl3_events, theta_square_cut, prediction_thre
     ax1.set_ylabel(r'$E_{\mathrm{Reco}} /  \mathrm{TeV}$')
 
     ax2 = bottom[1]
-<<<<<<< HEAD:irf/scripts/fact_dl3_to_oga.py
-    hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins=bins, normalize=True, smoothing=1.25)
-=======
     hist, bins_e_true, bins_mu = energy_migration(true_event_energy, predicted_event_energy, bins_energy=bins, normalize=True, smoothing=1.25)
->>>>>>> irf_writing:irf/scripts/fact_dl3_to_gadf.py
     im = ax2.pcolormesh(bins_e_true, bins_mu, hist.T, cmap='GnBu', norm=PowerNorm(0.5))
     fig.colorbar(im, ax=ax2)
     ax2.set_xscale('log')
@@ -224,40 +201,11 @@ def diagnostic_plots(gamma_events, dl3_events, theta_square_cut, prediction_thre
 
 
 
-<<<<<<< HEAD:irf/scripts/fact_dl3_to_oga.py
-def write_irf(output_directory, mc_production_spectrum, gamma_events, prediction_threshold, theta_square_cut, energy_bins, irf_path='fact_irf.fits'):
-
-    q = f'theta_deg <= {np.sqrt(theta_square_cut)} & gamma_prediction >= {prediction_threshold}'
-    selected_gamma_events = gamma_events.query(q).copy()
-
-    energies = selected_gamma_events['corsika_event_header_total_energy'].values * u.GeV
-    offsets = oga.calculate_fov_offset(selected_gamma_events)
-
-
-    collection_table = collection_area_to_irf_table(
-        mc_production_spectrum,
-        event_energies=energies,
-        event_fov_offsets=offsets,
-        bins=energy_bins,
-        smoothing=1.25,
-    )
-
-    energy_prediction = selected_gamma_events['gamma_energy_prediction'].values * u.GeV
-    e_disp_table = energy_dispersion_to_irf_table(
-        energies,
-        energy_prediction,
-        offsets,
-        bins=energy_bins,
-        theta_bins=2
-    )
-
-=======
 def write_irf(output_directory, corsika_showers, gamma_events, prediction_threshold, theta_square_cut, irf_path='fact_irf.fits'):
     rad_max = np.sqrt(theta_square_cut)
     q = f'theta_deg <= {rad_max} & gamma_prediction >= {prediction_threshold}'
 
     selected_gamma_events = gamma_events.query(q).copy()
->>>>>>> irf_writing:irf/scripts/fact_dl3_to_gadf.py
 
     min_energy = selected_gamma_events.corsika_event_header_total_energy.min() * u.GeV
     max_energy = selected_gamma_events.corsika_event_header_total_energy.max() * u.GeV

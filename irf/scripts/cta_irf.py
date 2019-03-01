@@ -1,5 +1,6 @@
 import fact.io
 from irf import oga, collection_area_to_irf_table, energy_dispersion_to_irf_table, collection_area, point_spread_function, psf_vs_energy, psf_to_irf_table
+from irf.oga.hdus import create_primary_hdu_cta
 import click
 import os
 from astropy.io import fits
@@ -7,7 +8,7 @@ from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import astropy.units as u
-from irf.models import MCSpectrum
+from irf.spectrum import MCSpectrum
 from astropy.coordinates.angle_utilities import angular_separation
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
@@ -46,18 +47,19 @@ def calculate_fov_offset(pointing_altitude, pointing_azimuth, source_altitude, s
     'output_path',
     type=click.Path(exists=False),
 )
-def main(cta_data, output_path,):
+@click.option('-p', '--pointing', nargs=2, type=float, default=(70, 180))
+def main(cta_data, output_path, pointing):
 
     runs = fact.io.read_data(cta_data, key='runs')
 
 
     mc_production_spectrum = MCSpectrum.from_cta_runs(runs)
-    energy_bins = np.logspace(-2, 2, endpoint=True, num=25 + 1) * u.TeV
+    energy_bins = np.logspace(-2, 2, endpoint=True, num=55 + 1) * u.TeV
 
     array_events = fact.io.read_data(cta_data, key='array_events')
 
     energies = array_events.mc_energy.values * u.TeV
-    offsets = calculate_fov_offset(70 * u.deg, 0 * u.deg, array_events.mc_alt.values * u.rad, array_events.mc_az.values * u.rad)
+    offsets = calculate_fov_offset(pointing[0] * u.deg, pointing[1] * u.deg, array_events.mc_alt.values * u.rad, array_events.mc_az.values * u.rad)
 
     collection_table = collection_area_to_irf_table(
         mc_production_spectrum,
@@ -80,15 +82,15 @@ def main(cta_data, output_path,):
         fov=12 * u.deg,
     )
 
-    alt = array_events.alt_prediction.values * u.rad
-    mc_alt = array_events.mc_alt.values * u.rad
+    alt = array_events.alt.values * u.deg
+    mc_alt = array_events.mc_alt.values * u.deg
 
-    az = array_events.az_prediction.values * u.rad
-    mc_az = array_events.mc_az.values * u.rad
+    az = array_events.az.values * u.deg
+    mc_az = array_events.mc_az.values * u.deg
 
     psf_table = psf_to_irf_table(mc_alt, mc_az, alt, az, energies, event_fov_offsets=offsets, fov=12 * u.deg, energy_bins=energy_bins, psf_bins=30, smoothing=0)
 
-    primary_hdu = oga.create_primary_hdu()
+    primary_hdu = create_primary_hdu_cta()
 
     collection_hdu = fits.table_to_hdu(collection_table)
     e_disp_hdu = fits.table_to_hdu(e_disp_table)
@@ -132,11 +134,11 @@ def diagnostic_plots(array_events, mc_production_spectrum, energy_bins, offsets)
     ax2.hist(energies, bins=bin_edges)
     ax2.set_xscale('log')
 
-    alt = array_events.alt_prediction.values * u.rad
-    mc_alt = array_events.mc_alt.values * u.rad
+    alt = array_events.alt.values * u.deg
+    mc_alt = array_events.mc_alt.values * u.deg
 
-    az = array_events.az_prediction.values * u.rad
-    mc_az = array_events.mc_az.values * u.rad
+    az = array_events.az.values * u.deg
+    mc_az = array_events.mc_az.values * u.deg
 
     bins = np.linspace(0, 90, 30) * u.deg
     bin_centers = 0.5 * (bins[:-1] + bins[1:])

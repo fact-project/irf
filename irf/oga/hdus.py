@@ -12,7 +12,7 @@ from astropy.table import Table
 from astropy.time import Time
 import numpy as np
 import datetime
-from irf.gadf.time import timestamp_to_mjdref, ontime_info_from_runs, TIME_INFO
+from irf.oga.time import timestamp_to_mjdref, ontime_info_from_runs, TIME_INFO
 
 
 def create_gti_hdu(run):
@@ -44,6 +44,25 @@ def create_primary_hdu():
     header['COMMENT'] = 'This file was created by https://github.com/fact-project/irf'
     header['COMMENT'] = 'See our full analysis on GitHub'
     header['COMMENT'] = 'https://github.com/fact-project/open_crab_sample_analysis'
+
+    now = Time.now().iso
+    header['COMMENT'] = f'This file was created on {now}'
+
+    return fits.PrimaryHDU(header=header)
+
+
+def create_primary_hdu_cta():
+    '''
+    Creates a primary fits HDU common to all FACT fits files.
+    '''
+    header = fits.Header()
+
+    header['OBSERVER'] = 'The CTA collaboration'
+    header['COMMENT'] = 'CTA OGA.'
+    header['COMMENT'] = 'See https://gamma-astro-data-formats.readthedocs.io/en/latest/'
+    header['COMMENT'] = 'This file was created by https://github.com/fact-project/irf'
+    header['COMMENT'] = 'See our full analysis on GitHub'
+    header['COMMENT'] = 'https://github.com/tudo-astroparticlephysics/cta_rta_analysis'
 
     now = Time.now().iso
     header['COMMENT'] = f'This file was created on {now}'
