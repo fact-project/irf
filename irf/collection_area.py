@@ -41,10 +41,9 @@ def histograms(
 
 @u.quantity_input(impact=u.meter)
 def collection_area(
-        all_events,
+        mc_production,
         selected_events,
-        impact,
-        bins,
+        bin_edges,
         sample_fraction=1.0,
         smoothing=0,
 ):
@@ -53,14 +52,12 @@ def collection_area(
 
     Parameters
     ----------
-    all_events: array-like
-        Quantity which should be histogrammed for all simulated events
+    mc_production: MCSpectrum instance
+        MCSpectrum instance describing the MC production
     selected_events: array-like
         Quantity which should be histogrammed for all selected events
-    bins: int or array-like
-        either number of bins or bin edges for the histogram
-    impact: astropy Quantity of type length
-        The maximal simulated impact parameter
+    bin_edges:array-like
+        bin edges for the histogram
     sample_fraction: float
         The fraction of `all_events` that was analysed
         to create `selected_events`
@@ -71,10 +68,13 @@ def collection_area(
         The amount of smoothing to apply to the resulting matrix
     '''
 
-    hist_all, hist_selected, bin_edges = histograms(
-        all_events,
+    scatter_radius = np.sqrt(mc_production.generation_area / np.pi) 
+
+
+    hist_all = mc_production.expected_events_for_bins(bin_edges*u.TeV)
+    hist_selected, _ = np.histogram(
         selected_events,
-        bins,
+        bins=bin_edges,
     )
 
     hist_selected = (hist_selected / sample_fraction).astype(int)
@@ -88,10 +88,10 @@ def collection_area(
     lower_conf, upper_conf = binom_conf_interval(hist_selected, hist_all)
 
     # scale confidences to match and split
-    lower_conf = lower_conf * np.pi * impact**2
-    upper_conf = upper_conf * np.pi * impact**2
+    lower_conf = lower_conf * np.pi * scatter_radius**2
+    upper_conf = upper_conf * np.pi * scatter_radius**2
 
-    area = (hist_selected / hist_all) * np.pi * impact**2
+    area = (hist_selected / hist_all) * np.pi * scatter_radius**2
 
     if smoothing > 0:
         a = area.copy()

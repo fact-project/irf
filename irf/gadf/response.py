@@ -5,7 +5,7 @@ import numpy as np
 from astropy.coordinates.angle_utilities import angular_separation
 from irf.collection_area import collection_area
 from irf.energy_dispersion import energy_migration
-from irf.gadf.hdus import add_meta_information_to_hdu
+from irf.gadf.hdus import add_fact_meta_information_to_hdu
 
 
 def _calculate_fov_offset(df):
@@ -41,11 +41,10 @@ def _make_energy_bins(energy_true, energy_prediction, bins):
 
 
 @u.quantity_input(fov=u.deg, impact=u.m)
-def effective_area_hdu(
-    corsika_showers,
+def effective_area_hdu_for_fact(
+    mc_production,
     selected_diffuse_gammas,
     bins=10,
-    impact=270 * u.m,
     sample_fraction=1.0,
     fov=4.5 * u.deg,
     smoothing=0,
@@ -58,7 +57,7 @@ def effective_area_hdu(
     Parameters
     ----------
 
-    corsika_showers : pd.DataFrame
+     : pd.DataFrame
         the corsika shower information as produced by the 'read_corsika_headers' script
         in this project.
     selected_diffuse_gammas :  pd.DataFrame
@@ -82,18 +81,14 @@ def effective_area_hdu(
 
     '''
 
-    shower_energy = (corsika_showers.energy.values * u.GeV).to('TeV')
     true_event_energy = (selected_diffuse_gammas.corsika_event_header_total_energy.values * u.GeV).to('TeV')
-    offset = _calculate_fov_offset(selected_diffuse_gammas)
+    event_offsets = _calculate_fov_offset(selected_diffuse_gammas)
 
-    if np.isscalar(bins):
-        low = np.log10(shower_energy.min().value)
-        high = np.log10(shower_energy.max().value)
-        bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
-    else:
-        low = bins.min()
-        high = bins.max()
-        bin_edges = bins
+    hdu = create_effective_area_hdu(mc_production, true_event_energy, bins, event_offsets, fov, sample_fraction, smoothing)
+    add_fact_meta_information_to_hdu(hdu)
+    return hdu
+
+def create_effective_area_hdu(mc_production, true_event_energy, bin_edges, event_offsets, fov, sample_fraction=1.0, smoothing=0.0):
 
     energy_lo = bin_edges[np.newaxis, :-1]
     energy_hi = bin_edges[np.newaxis, 1:]
@@ -101,17 +96,16 @@ def effective_area_hdu(
     theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=5)
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
-
+    # from IPython import embed; embed()
     areas = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= offset.value) & (offset.value < upper)
+        m = (lower <= event_offsets.value) & (event_offsets.value < upper)
         f = (upper**2 - lower**2) / ((fov.value / 2) ** 2) * sample_fraction
 
         r = collection_area(
-            shower_energy,
+            mc_production,
             true_event_energy[m],
-            impact=impact,
-            bins=bin_edges,
+            bin_edges=bin_edges,
             sample_fraction=f,
             smoothing=smoothing,
         )
@@ -138,7 +132,6 @@ def effective_area_hdu(
     t.meta['HDUCLAS4'] = 'AEFF_2D'
     t.meta['EXTNAME'] = 'EFFECTIVE AREA'
     hdu = fits.table_to_hdu(t)
-    add_meta_information_to_hdu(hdu)
     return hdu
 
 
@@ -220,5 +213,5 @@ def energy_dispersion_hdu(selected_diffuse_gammas, bins=10, fov=4.5 * u.deg, the
     t.meta['EXTNAME'] = 'ENERGY DISPERSION'
 
     hdu = fits.table_to_hdu(t)
-    add_meta_information_to_hdu(hdu)
+    add_fact_meta_information_to_hdu(hdu)
     return hdu

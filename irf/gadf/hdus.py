@@ -26,10 +26,28 @@ def create_gti_hdu(run):
 
     t = Table({'START': start_time, 'STOP': stop_time})
     hdu = fits.table_to_hdu(t)
-    add_meta_information_to_hdu(hdu)
+    add_fact_meta_information_to_hdu(hdu)
     hdu.header['EXTNAME'] = 'GTI'
     hdu.header['HDUCLAS1'] = 'GTI'
     return hdu
+
+def create_primary_hdu_cta():
+    '''
+    Creates a primary fits HDU common to all FACT fits files.
+    '''
+    header = fits.Header()
+
+    header['OBSERVER'] = 'The TU Dortmund CTA group'
+    header['COMMENT'] = 'CTA OGA.'
+    header['COMMENT'] = 'See https://gamma-astro-data-formats.readthedocs.io/en/latest/'
+    header['COMMENT'] = 'This file was created by https://github.com/fact-project/irf'
+    header['COMMENT'] = 'See our full analysis on GitHub'
+    header['COMMENT'] = 'https://github.com/tudo-astroparticle/cta_rta_analysis'
+
+    now = Time.now().iso
+    header['COMMENT'] = f'This file was created on {now}'
+
+    return fits.PrimaryHDU(header=header)
 
 
 def create_primary_hdu():
@@ -81,7 +99,7 @@ def create_events_hdu(dl3, run):
     ra_pnt = ra_pnt.to('deg')
     dec_pnt = run.declination * u.deg
 
-    add_meta_information_to_hdu(hdu)
+    add_fact_meta_information_to_hdu(hdu)
     hdu.header['EXTNAME'] = 'EVENTS'
     hdu.header['HDUCLAS1'] = 'EVENTS'
     hdu.header['OBS_ID'] = _observation_ids(run)
@@ -129,7 +147,7 @@ def create_index_hdu(runs, path_to_irf_file='fact_irf.fits'):
     }
 
     hdu = fits.table_to_hdu(Table(d))
-    add_meta_information_to_hdu(hdu)
+    add_fact_meta_information_to_hdu(hdu)
     hdu.header['EXTNAME'] = 'HDU_INDEX'
     hdu.header['HDUCLASS'] = 'GADF'
     hdu.header['HDUCLAS1'] = 'INDEX'
@@ -179,11 +197,11 @@ def create_observation_index_hdu(runs):
     hdu.header['HDUCLAS1'] = 'INDEX'
     hdu.header['HDUCLAS2'] = 'OBS'
 
-    add_meta_information_to_hdu(hdu)
+    add_fact_meta_information_to_hdu(hdu)
     return hdu
 
 
-def add_meta_information_to_hdu(hdu, **kwargs):
+def add_fact_meta_information_to_hdu(hdu, **kwargs):
     '''
     Takes an hdu object and adds meta information as required by the open gamma ray astro
     format to its header.

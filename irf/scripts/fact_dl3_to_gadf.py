@@ -1,6 +1,7 @@
 import fact.io
 from irf.gadf import response, hdus
 from irf import energy_migration, energy_dispersion
+from irf.spectrum import MCSpectrum
 import click
 import os
 from astropy.io import fits
@@ -62,6 +63,11 @@ columns_to_read = [
     help='Maximum scatter radius (meter) used during corsika simulations of gammas.',
 )
 @click.option(
+    '-i', '--spectrum_index',
+    default=-2.7,
+    help='production spectrum index (-2.7)',
+)
+@click.option(
     '--start',
     help='Min datetime stamp for run selection.',
 )
@@ -74,7 +80,7 @@ columns_to_read = [
     help='runs to exclude in YYMMDD_ID format',
     multiple=True,
 )
-def main(showers, predictions, dl3, output_directory, prediction_threshold, theta_square_cut, max_scat, start, end, exclude):
+def main(showers, predictions, dl3, output_directory, prediction_threshold, theta_square_cut, spectrum_index, max_scat, start, end, exclude):
     '''
     Takes FACT Corsika information (SHOWERS), FACT (diffuse) MC data (PREDICTIONS)
     and FACT observations (DL3) as input and writes DL3 data and IRFs according
@@ -100,6 +106,14 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     dl3_events = fact.io.read_h5py(dl3, key='events')
     runs = fact.io.read_h5py(dl3, key='runs')
 
+    fact_mc_spectrum = MCSpectrum(
+        e_min=200*u.GeV,
+        e_max=5000*u.GeV,
+        total_showers_simulated=6000000,
+        generation_area=(max_scat*u.m)**2*np.pi,
+        index=-2.7
+    )
+
     if start:
         dt = parse(start)
         m = pd.to_datetime(runs.run_start) >= dt
@@ -121,7 +135,6 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
     gamma_events = fact.io.read_data(predictions, key='events', columns=columns_to_read)
 
 
-
     diagnostic_plots(gamma_events, dl3_events, theta_square_cut=theta_square_cut, prediction_threshold=prediction_threshold)
     plt.savefig(os.path.join(output_directory, 'plots.png'))
 
@@ -129,8 +142,7 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
 
     write_dl3(output_directory, dl3_events, runs, prediction_threshold=prediction_threshold)
 
-    showers = fact.io.read_data(showers, key='showers')
-    write_irf(output_directory, showers, gamma_events, prediction_threshold, theta_square_cut)
+    write_irf(output_directory, fact_mc_spectrum, gamma_events, prediction_threshold, theta_square_cut)
 
 
 def diagnostic_plots(gamma_events, dl3_events, theta_square_cut, prediction_threshold):
@@ -204,7 +216,7 @@ def diagnostic_plots(gamma_events, dl3_events, theta_square_cut, prediction_thre
 
 
 
-def write_irf(output_directory, corsika_showers, gamma_events, prediction_threshold, theta_square_cut, irf_path='fact_irf.fits'):
+def write_irf(output_directory, mc_production, gamma_events, prediction_threshold, theta_square_cut, irf_path='fact_irf.fits'):
     rad_max = np.sqrt(theta_square_cut)
     q = f'theta_deg <= {rad_max} & gamma_prediction >= {prediction_threshold}'
 
@@ -213,13 +225,13 @@ def write_irf(output_directory, corsika_showers, gamma_events, prediction_thresh
     min_energy = selected_gamma_events.corsika_event_header_total_energy.min() * u.GeV
     max_energy = selected_gamma_events.corsika_event_header_total_energy.max() * u.GeV
     energy_bins = np.logspace(
-                        np.log10(min_energy.to('TeV').value),
-                        np.log10(max_energy.to('TeV').value),
-                        endpoint=True,
-                        num=25 + 1
-                )
+        np.log10(min_energy.to('TeV').value),
+        np.log10(max_energy.to('TeV').value),
+        endpoint=True,
+        num=25 + 1
+    )
 
-    a_eff_hdu = response.effective_area_hdu(corsika_showers, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8)
+    a_eff_hdu = response.effective_area_hdu_for_fact(mc_production, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8,)
     e_disp_hdu = response.energy_dispersion_hdu(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=0.8)
 
     a_eff_hdu.header['RAD_MAX'] = rad_max
@@ -273,4 +285,5 @@ def write_dl3(output_directory, dl3_events, runs, prediction_threshold=0.85):
 
 
 if __name__ == '__main__':
+    # pylint: disable=no-value-for-parameter
     main()
