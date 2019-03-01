@@ -201,6 +201,28 @@ def create_observation_index_hdu(runs):
     return hdu
 
 
+def add_cta_meta_information_to_hdu(hdu, **kwargs):
+    '''
+    Takes an hdu object and adds meta information as required by the open gamma ray astro
+    format to its header.
+    '''
+    hdu.header['CREATOR'] = ('CTA IRF', 'See https://github.com/fact-project/irf')
+    hdu.header['TELESCOP'] = ('CTA', 'The Cherenkov Telescope Array')
+    hdu.header['INSTRUME'] = 'CTA'
+    hdu.header['ORIGIN'] = 'CTA Dortmund Group'
+    hdu.header['HDUCLASS'] = ('GADF', 'Gamma-Ray Astro Data Format')
+    hdu.header['HDUDOC'] = 'https://gamma-astro-data-formats.readthedocs.io'
+    hdu.header['HDUVERS'] = '0.2'
+    hdu.header['EQUINOX'] = '2000.0'
+    hdu.header['RADECSYS'] = 'ICRS'
+    hdu.header['EUNIT'] = 'TeV'
+    hdu.header['DATE'] = datetime.datetime.now().replace(microsecond=0).isoformat()
+    _extend_hdu_header(hdu.header, TIME_INFO)
+    if kwargs:
+        _extend_hdu_header(hdu.header, kwargs)
+
+
+
 def add_fact_meta_information_to_hdu(hdu, **kwargs):
     '''
     Takes an hdu object and adds meta information as required by the open gamma ray astro
