@@ -42,23 +42,12 @@ def apply_cuts(df, cuts_path, sigma=1, prediction_cuts=True, multiplicity_cuts=T
     bin_center = np.sqrt(cuts.e_min * cuts.e_max)
 
     m = np.ones(len(df)).astype(np.bool)
-
-    # if theta_cuts:
-    #     source_az = df.mc_az.values * u.deg
-    #     source_alt = df.mc_alt.values * u.deg
-
-    #     df['theta'] = (calculate_distance_to_point_source(df, source_alt=source_alt, source_az=source_az).to_value(u.deg))
-
-    #     f_theta =  create_interpolated_function(bin_center, cuts.theta_cut)
-    #     m &= df.theta < f_theta(df.gamma_energy_prediction_mean)
-
     if prediction_cuts: 
         f_prediction = create_interpolated_function(bin_center, cuts.prediction_cut)
         m &= df.gamma_prediction_mean >= f_prediction(df.gamma_energy_prediction_mean)
 
     if multiplicity_cuts:
         multiplicity = cuts.multiplicity[0]
-        print('multi', multiplicity)
         m &= df.num_triggered_telescopes >= multiplicity
     
     return df[m]
@@ -83,23 +72,59 @@ def main(cta_data, cuts_path,  output_path, pointing):
     runs = fact.io.read_data(cta_data, key='runs')
 
     mc_production = MCSpectrum.from_cta_runs(runs)
-    energy_bins = np.logspace(-2, 2, endpoint=True, num=55 + 1) * u.TeV
+    energy_bins = np.logspace(-2, 2, endpoint=True, num=30 + 1) * u.TeV
 
     array_events = fact.io.read_data(cta_data, key='array_events')
     array_events = apply_cuts(array_events, cuts_path)
 
-    # energies = array_events.mc_energy.values * u.TeV
-    offsets = calculate_fov_offset(pointing[0] * u.deg, pointing[1] * u.deg, array_events.mc_alt.values * u.rad, array_events.mc_az.values * u.rad)
 
-    alt = array_events.alt.values * u.deg
     mc_alt = array_events.mc_alt.values * u.deg
-
-    az = array_events.az.values * u.deg
     mc_az = array_events.mc_az.values * u.deg
+    
+    event_energies = array_events.mc_energy.values * u.TeV
+    estimated_event_energies = array_events.gamma_energy_prediction_mean.values * u.TeV
+    event_offsets = calculate_fov_offset(pointing[0] * u.deg, pointing[1] * u.deg, mc_alt, mc_az)
+
+
 
     # psf_table = psf_to_irf_table(mc_alt, mc_az, alt, az, energies, event_fov_offsets=offsets, fov=12 * u.deg, energy_bins=energy_bins, psf_bins=30, smoothing=0)
 
     primary_hdu = create_primary_hdu_cta()
+
+
+    min_energy = array_events.mc_energy.min() * u.TeV
+    max_energy = array_events.mc_energy.max() * u.TeV
+    # max_energy = selected_gamma_events.corsika_event_header_total_energy.max() * u.GeV
+    energy_bins = np.logspace(
+        np.log10(min_energy.to('TeV').value),
+        np.log10(max_energy.to('TeV').value),
+        endpoint=True,
+        num=25 + 1
+    )
+
+    fov = 12*u.deg
+
+    a_eff_hdu = response.create_effective_area_hdu(mc_production, event_energies, event_offsets, energy_bins, fov=fov)
+    hdus.add_cta_meta_information_to_hdu(a_eff_hdu)
+
+
+    e_disp_hdu = response.create_energy_dispersion_hdu(
+        event_energies,
+        estimated_event_energies,
+        event_offsets,
+        bins_e_true=energy_bins,
+        num_theta_bins=5,
+        fov=fov
+    )
+    hdus.add_cta_meta_information_to_hdu(e_disp_hdu)
+
+
+    primary_hdu = hdus.create_primary_hdu()
+
+    hdulist = fits.HDUList([primary_hdu, a_eff_hdu, e_disp_hdu])
+    hdulist.writeto(output_path, overwrite=True)
+
+
 
     # collection_hdu = fits.table_to_hdu(collection_table)
     # e_disp_hdu = fits.table_to_hdu(e_disp_table)
@@ -115,26 +140,6 @@ def main(cta_data, cuts_path,  output_path, pointing):
 
     # rad_max = np.sqrt(theta_square_cut)
     # q = f'theta_deg <= {rad_max} & gamma_prediction >= {prediction_threshold}'
-
-
-    min_energy = array_events.mc_energy.min() * u.TeV
-    max_energy = array_events.mc_energy.max() * u.TeV
-    # max_energy = selected_gamma_events.corsika_event_header_total_energy.max() * u.GeV
-    energy_bins = np.logspace(
-        np.log10(min_energy.to('TeV').value),
-        np.log10(max_energy.to('TeV').value),
-        endpoint=True,
-        num=25 + 1
-    )
-
-    a_eff_hdu = response.effective_area_hdu_for_cta(mc_production, array_events, bins=energy_bins, sample_fraction=1, smoothing=0.8,)
-    e_disp_hdu = response.energy_dispersion_hdu(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=0.8)
-
-
-    primary_hdu = hdus.create_primary_hdu()
-
-    hdulist = fits.HDUList([primary_hdu, a_eff_hdu, e_disp_hdu])
-    hdulist.writeto(os.path.join(output_path, 'cta_irf.fits'), overwrite=True)
 
 
 # def diagnostic_plots(array_events, mc_production_spectrum, energy_bins, offsets):

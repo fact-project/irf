@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u
 from matplotlib.colors import PowerNorm
+from astropy.coordinates.angle_utilities import angular_separation
 
 from dateutil.parser import parse
 
@@ -215,6 +216,18 @@ def diagnostic_plots(gamma_events, dl3_events, theta_square_cut, prediction_thre
     ax3.hist(dl3_events.query(f'gamma_prediction >= {prediction_threshold}').theta_deg**2, bins=tb, histtype='step',color='black', )
 
 
+def calculate_fov_offset(df):
+    '''
+    Calculate the `offset` aka the `angular_separation` between the pointing and
+    the source position.
+    '''
+    pointing_lat = (90 - df.aux_pointing_position_zd.values) * u.deg
+    pointing_lon = df.aux_pointing_position_az.values * u.deg
+
+    source_lat = (90 - df.source_position_zd.values) * u.deg
+    source_lon = df.source_position_az.values * u.deg
+
+    return angular_separation(pointing_lon, pointing_lat, source_lon, source_lat).to('deg')
 
 def write_irf(output_directory, mc_production, gamma_events, prediction_threshold, theta_square_cut, irf_path='fact_irf.fits'):
     rad_max = np.sqrt(theta_square_cut)
@@ -231,7 +244,15 @@ def write_irf(output_directory, mc_production, gamma_events, prediction_threshol
         num=25 + 1
     )
 
-    a_eff_hdu = response.effective_area_hdu_for_fact(mc_production, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8,)
+    true_event_energy = (selected_gamma_events.corsika_event_header_total_energy.values * u.GeV).to('TeV')
+    event_offsets = calculate_fov_offset(selected_gamma_events)
+
+    fov = 4.5 * u.deg
+
+    a_eff_hdu = response.create_effective_area_hdu(mc_production, true_event_energy, event_offsets, bin_edges=energy_bins , fov=fov, sample_fraction=1, smoothing=0.8,)
+    hdus.add_fact_meta_information_to_hdu(a_eff_hdu)
+    
+    # a_eff_hdu = response.effective_area_hdu_for_fact(mc_production, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8,)
     e_disp_hdu = response.energy_dispersion_hdu(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=0.8)
 
     a_eff_hdu.header['RAD_MAX'] = rad_max
