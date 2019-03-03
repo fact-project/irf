@@ -30,7 +30,7 @@ def _make_energy_bins(energy_true, energy_prediction, bins):
     return bin_edges
 
 
-def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, bin_edges, fov, sample_fraction=1.0, smoothing=0.0):
+def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, bin_edges, num_theta_bins=5, fov=10*u.deg, sample_fraction=1.0, smoothing=0.0):
     '''
     Creates the effective area hdu to be written into a fits file accroding to the format
     described here:
@@ -67,14 +67,13 @@ def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, b
     energy_lo = bin_edges[np.newaxis, :-1]
     energy_hi = bin_edges[np.newaxis, 1:]
 
-    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=5)
+    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=num_theta_bins + 1) * u.deg
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
-    # from IPython import embed; embed()
     areas = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= event_offsets.value) & (event_offsets.value < upper)
-        f = (upper**2 - lower**2) / ((fov.value / 2) ** 2) * sample_fraction
+        m = (lower <= event_offsets) & (event_offsets < upper)
+        f = (upper.value**2 - lower.value**2) / ((fov.value / 2) ** 2) * sample_fraction
 
         r = collection_area(
             mc_production,
@@ -84,18 +83,18 @@ def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, b
             smoothing=smoothing,
         )
 
-        area, bin_center, bin_width, lower_conf, upper_conf = r
+        area, _, _, _, _ = r
         areas.append(area.value)
 
     area = np.vstack(areas)
     area = area[np.newaxis, :] * u.m**2
-
+    print('AEFF', area.shape, energy_lo.shape, theta_lo.shape)
     t = Table(
         {
-            'ENERG_LO': energy_lo * u.TeV,
-            'ENERG_HI': energy_hi * u.TeV,
-            'THETA_LO': theta_lo * u.deg,
-            'THETA_HI': theta_hi * u.deg,
+            'ENERG_LO': energy_lo,
+            'ENERG_HI': energy_hi,
+            'THETA_LO': theta_lo,
+            'THETA_HI': theta_hi,
             'EFFAREA': area,
         }
     )
@@ -109,7 +108,7 @@ def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, b
     return hdu
 
 
-def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy,  event_offset, bins_e_true, num_theta_bins=5, fov=10*u.deg,  smoothing=1):
+def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, event_offset, bins_e_true, num_theta_bins=5, fov=10*u.deg,  smoothing=1):
     '''
     Creates the effective area hdu to be written into a fits file accroding to the format
     described here:
@@ -146,7 +145,7 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy,  eve
         print('You have to provide the actual bin edges for the enrgy binning')
         raise ValueError
     
-    bins_mu = np.linspace(0, 6, endpoint=True, num=len(bins_e_true))
+    bins_mu = np.linspace(0, 6, endpoint=True, num=len(bins_e_true)+2)
 
     energy_lo = bins_e_true[np.newaxis, :-1]
     energy_hi = bins_e_true[np.newaxis, 1:]
@@ -154,26 +153,26 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy,  eve
     migra_lo = bins_mu[np.newaxis, :-1]
     migra_hi = bins_mu[np.newaxis, 1:]
 
-    theta_bin_edges = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=num_theta_bins + 1)
+    theta_bin_edges = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=num_theta_bins + 1) * u.deg
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
 
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= event_offset.value) & (event_offset.value < upper)
+        m = (lower <= event_offset) & (event_offset < upper)
         migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins_energy=bins_e_true, bins_mu=bins_mu, normalize=True, smoothing=smoothing)
         migras.append(migra.T)
 
     matrix = np.stack(migras)[np.newaxis, :]
-
+    print('EDISP', matrix.shape)
     t = Table(
         {
-            'ENERG_LO': energy_lo * u.TeV,
-            'ENERG_HI': energy_hi * u.TeV,
+            'ENERG_LO': energy_lo,
+            'ENERG_HI': energy_hi,
             'MIGRA_LO': migra_lo,
             'MIGRA_HI': migra_hi,
-            'THETA_LO': theta_lo * u.deg,
-            'THETA_HI': theta_hi * u.deg,
+            'THETA_LO': theta_lo,
+            'THETA_HI': theta_hi,
             'MATRIX': matrix,
         }
     )
@@ -247,8 +246,10 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, bins_energy, 
         psf = binned_psf_vs_energy(event_energy[m],  angular_separation[m],  rad_bins=rad_bins, energy_bin_edges=bins_energy, smoothing=0)
         migras.append(psf)
 
-    matrix = np.stack(migras).T[np.newaxis, :]
-    # from IPython import embed; embed()
+    matrix = np.stack(migras)[np.newaxis, :]
+    print('PSF', matrix.shape)
+    matrix = np.transpose(matrix, [0, 3, 1, 2])
+    print('PSF', matrix.shape)
     if smoothing > 0:
         a = matrix.copy()
         matrix = gaussian_filter(a, sigma=smoothing)
@@ -261,7 +262,7 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, bins_energy, 
             'RAD_HI': rad_hi,
             'THETA_LO': theta_lo,
             'THETA_HI': theta_hi,
-            'RPSF': matrix /u.sr,
+            'RPSF': matrix / u.sr,
         }
     )
 
@@ -328,13 +329,14 @@ def create_bkg_hdu(event_energy, event_offset, weights, bins_energy, theta_bins=
         bkg = background_vs_energy(event_energy[m], weights[m], energy_bins=bins_energy, smoothing=0)
         migras.append(bkg)
 
+    # transpose here. See https://github.com/gammapy/gammapy/issues/2067
     matrix = np.stack(migras).T[np.newaxis, :]
 
-    # from IPython import embed; embed()
     if smoothing > 0:
         a = matrix.copy()
         matrix = gaussian_filter(a, sigma=smoothing)
 
+    print('BKG', matrix.shape, energy_lo.shape, theta_lo.shape)
     t = Table(
         {
             'ENERG_LO': energy_lo,

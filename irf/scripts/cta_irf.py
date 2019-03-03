@@ -27,7 +27,7 @@ def calculate_fov_offset(pointing_altitude, pointing_azimuth, source_altitude, s
     source_lat = source_altitude.to(u.deg)
     source_lon = source_azimuth.to(u.deg)
 
-    return angular_separation(pointing_lon, pointing_lat, source_lon, source_lat).to('deg')
+    return angular_separation(pointing_lon, pointing_lat, source_lon, source_lat).to(u.deg)
 
 
 
