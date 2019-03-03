@@ -39,7 +39,7 @@ def histograms(
     return hist_all, hist_selected, bin_edges
 
 
-@u.quantity_input(impact=u.meter)
+@u.quantity_input(bin_edges=u.TeV)
 def collection_area(
         mc_production,
         selected_events,
@@ -71,7 +71,7 @@ def collection_area(
     scatter_radius = np.sqrt(mc_production.generation_area / np.pi) 
 
 
-    hist_all = mc_production.expected_events_for_bins(bin_edges*u.TeV)
+    hist_all = mc_production.expected_events_for_bins(bin_edges)
     hist_selected, _ = np.histogram(
         selected_events,
         bins=bin_edges,

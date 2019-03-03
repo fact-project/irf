@@ -2,11 +2,14 @@ import astropy.units as u
 from astropy.io import fits
 from astropy.table import Table
 import numpy as np
+from scipy.ndimage.filters import gaussian_filter
 from astropy.coordinates.angle_utilities import angular_separation
+
 from irf.collection_area import collection_area
 from irf.energy_dispersion import energy_migration
+from irf.psf import binned_psf_vs_energy
+from irf.background import background_vs_energy
 from irf.gadf.hdus import add_fact_meta_information_to_hdu, add_cta_meta_information_to_hdu
-
 
 
 def _make_energy_bins(energy_true, energy_prediction, bins):
@@ -185,3 +188,168 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy,  eve
     return hdu
 
 
+
+def create_psf_hdu(event_energy, angular_separation, event_offset, bins_energy, rad_bins=20, theta_bins=5, fov=10*u.deg,  smoothing=1):
+    '''
+    Creates the effective area hdu to be written into a fits file accroding to the format
+    described here:
+    http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
+
+    Parameters
+    ----------
+    event_energy :  array-like astropy.unit.Quantity (energy)
+        energy of selected events
+    angular_separation :  array-like astropy.unit.Quantity (deg)
+        distance to true source position
+    event_offsets : astropy.unit.Quantity (deg)
+        the offset from the pointing direction in degrees
+    bins_energy : astropy.unit.Quantity (deg)
+        the energy bin edges.
+    num_theta_bins : int
+        the number of fov bins to use.
+    fov :  astropy.unit.Quantity (degree)
+        the field of view of the telescope
+    smoothing : float
+        Amount of smoothing to apply to the generated matrices.
+        Equivalent to the sigma parameter in
+        https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html    
+
+    Returns
+    -------
+
+    astropy.io.fits.hdu
+        The fits hdu as required by the GADF
+
+    '''
+
+    if np.isscalar(bins_energy):
+        print('You have to provide the actual bin edges for the enrgy binning')
+        raise ValueError
+    
+    if np.isscalar(rad_bins):
+        rad_bins = np.linspace(0, fov.to_value(u.deg), rad_bins) * u.deg
+    if np.isscalar(theta_bins):
+        theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=theta_bins + 1) * u.deg
+
+    rad_lo = rad_bins[np.newaxis, :-1]
+    rad_hi = rad_bins[np.newaxis, 1:]
+    
+
+    energy_lo = bins_energy[np.newaxis, :-1]
+    energy_hi = bins_energy[np.newaxis, 1:]
+    
+    theta_lo = theta_bins[np.newaxis, :-1]
+    theta_hi = theta_bins[np.newaxis, 1:]
+
+    migras = []
+    for lower, upper in zip(theta_lo[0], theta_hi[0]):
+        m = (lower <= event_offset) & (event_offset < upper)
+        psf = binned_psf_vs_energy(event_energy[m],  angular_separation[m],  rad_bins=rad_bins, energy_bin_edges=bins_energy, smoothing=0)
+        migras.append(psf)
+
+    matrix = np.stack(migras).T[np.newaxis, :]
+    # from IPython import embed; embed()
+    if smoothing > 0:
+        a = matrix.copy()
+        matrix = gaussian_filter(a, sigma=smoothing)
+
+    t = Table(
+        {
+            'ENERG_LO': energy_lo,
+            'ENERG_HI': energy_hi,
+            'RAD_LO': rad_lo,
+            'RAD_HI': rad_hi,
+            'THETA_LO': theta_lo,
+            'THETA_HI': theta_hi,
+            'RPSF': matrix /u.sr,
+        }
+    )
+
+    t.meta['HDUCLAS1'] = 'RESPONSE'
+    t.meta['HDUCLAS2'] = 'PSF'
+    t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
+    t.meta['HDUCLAS4'] = 'PSF_2D'
+    t.meta['EXTNAME'] = 'PSF'
+
+    hdu = fits.table_to_hdu(t)
+    return hdu
+
+
+
+def create_bkg_hdu(event_energy, event_offset, weights, bins_energy, theta_bins=5, fov=10*u.deg,  smoothing=1):
+    '''
+    Creates the effective area hdu to be written into a fits file accroding to the format
+    described here:
+    http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
+
+    Parameters
+    ----------
+    event_energy :  array-like astropy.unit.Quantity (energy)
+        energy of selected events
+    event_offsets : astropy.unit.Quantity (deg)
+        the offset from the pointing direction in degrees
+    weights : astropy.unit.Quantity (deg)
+        the weight of the events
+    bins_energy : astropy.unit.Quantity (deg)
+        the energy bin edges.
+    theta_bins : int
+        the number of fov bins to use.
+    fov :  astropy.unit.Quantity (degree)
+        the field of view of the telescope
+    smoothing : float
+        Amount of smoothing to apply to the generated matrices.
+        Equivalent to the sigma parameter in
+        https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html    
+
+    Returns
+    -------
+
+    astropy.io.fits.hdu
+        The fits hdu as required by the GADF
+
+    '''
+
+    if np.isscalar(bins_energy):
+        print('You have to provide the actual bin edges for the enrgy binning')
+        raise ValueError
+    
+    if np.isscalar(theta_bins):
+        theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=theta_bins + 1) * u.deg
+
+    energy_lo = bins_energy[np.newaxis, :-1]
+    energy_hi = bins_energy[np.newaxis, 1:]
+    
+    theta_lo = theta_bins[np.newaxis, :-1]
+    theta_hi = theta_bins[np.newaxis, 1:]
+
+    migras = []
+    for lower, upper in zip(theta_lo[0], theta_hi[0]):
+        m = (lower <= event_offset) & (event_offset < upper)
+        bkg = background_vs_energy(event_energy[m], weights[m], energy_bins=bins_energy, smoothing=0)
+        migras.append(bkg)
+
+    matrix = np.stack(migras).T[np.newaxis, :]
+
+    # from IPython import embed; embed()
+    if smoothing > 0:
+        a = matrix.copy()
+        matrix = gaussian_filter(a, sigma=smoothing)
+
+    t = Table(
+        {
+            'ENERG_LO': energy_lo,
+            'ENERG_HI': energy_hi,
+            'THETA_LO': theta_lo,
+            'THETA_HI': theta_hi,
+            'BKG': matrix/u.sr/u.s/u.m**2,
+        }
+    )
+
+    t.meta['HDUCLAS1'] = 'RESPONSE'
+    t.meta['HDUCLAS2'] = 'BKG'
+    t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
+    t.meta['HDUCLAS4'] = 'BKG_2D'
+    t.meta['EXTNAME'] = 'BACKGROUND'
+
+    hdu = fits.table_to_hdu(t)
+    return hdu
