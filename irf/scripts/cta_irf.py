@@ -87,10 +87,10 @@ columns  = ['alt', 'az', 'mc_energy', 'gamma_energy_prediction_mean', 'gamma_pre
     type=click.Path(exists=False),
 )
 @click.option('-p', '--pointing', nargs=2, type=float, default=(70, 180))
-def main(gammas_diffuse_path, protons_path, electrons_path,  cuts_path,  output_path, pointing):
+def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_path, pointing):
 
     fov = 12*u.deg
-    energy_bins = np.logspace(-2, 2, endpoint=True, num=25 + 1) * u.TeV
+    energy_bins = np.logspace(-2, 2, num=25 + 1) * u.TeV
 
     
     gamma_runs = fact.io.read_data(gammas_diffuse_path, key='runs')
@@ -134,13 +134,13 @@ def main(gammas_diffuse_path, protons_path, electrons_path,  cuts_path,  output_
         angular_distance,
         event_offsets,
         bins_energy=energy_bins,
-        fov=12 * u.deg,
-        rad_bins=20,
+        fov=10 * u.deg,
+        rad_bins=100,
         smoothing=1
     )
     hdus.add_cta_meta_information_to_hdu(psf_hdu)
 
-    t_obs = 50 * u.h
+    t_obs = 1 * u.s
 
     proton_runs = fact.io.read_data(protons_path, key='runs')
     mc_production_protons = MCSpectrum.from_cta_runs(proton_runs)
@@ -151,6 +151,8 @@ def main(gammas_diffuse_path, protons_path, electrons_path,  cuts_path,  output_
     energies = proton_events.gamma_energy_prediction_mean.values * u.TeV
     proton_events['weight'] = mc_production_protons.reweigh_to_other_spectrum(CTAProtonSpectrum(), energies, t_assumed_obs=t_obs)
 
+    proton_events['weight'] = proton_events['weight'] / mc_production_protons.generation_area / mc_production_protons.generator_solid_angle
+
     electron_runs = fact.io.read_data(electrons_path, key='runs')
     mc_production_electrons = MCSpectrum.from_cta_runs(electron_runs)
     
@@ -159,6 +161,8 @@ def main(gammas_diffuse_path, protons_path, electrons_path,  cuts_path,  output_
     
     energies = electron_events.gamma_energy_prediction_mean.values * u.TeV
     electron_events['weight'] = mc_production_protons.reweigh_to_other_spectrum(CTAProtonSpectrum(), energies, t_assumed_obs=t_obs)
+
+    electron_events['weight'] = electron_events['weight'] / mc_production_electrons.generation_area / mc_production_electrons.generator_solid_angle
 
     background = pd.concat([proton_events, electron_events])
 
