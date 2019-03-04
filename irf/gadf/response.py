@@ -226,30 +226,44 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, bins_energy, 
         raise ValueError
     
     if np.isscalar(rad_bins):
-        rad_bins = np.linspace(0, fov.to_value(u.deg), rad_bins) * u.deg
+        rad_max = 1.5
+        rad_min = 0
+        rad_bins = np.linspace(rad_min, rad_max, rad_bins) * u.deg
+        # rad_bins = d**2/d.max()
+
     if np.isscalar(theta_bins):
         theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=theta_bins + 1) * u.deg
 
     rad_lo = rad_bins[np.newaxis, :-1]
     rad_hi = rad_bins[np.newaxis, 1:]
     
-
     energy_lo = bins_energy[np.newaxis, :-1]
     energy_hi = bins_energy[np.newaxis, 1:]
     
     theta_lo = theta_bins[np.newaxis, :-1]
     theta_hi = theta_bins[np.newaxis, 1:]
 
+    r = ((rad_bins[:-1] + rad_bins[1:]) / 2).to_value(u.deg)
+    deg2sr = (np.pi/180)**2
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= event_offset) & (event_offset < upper)
-        psf = binned_psf_vs_energy(event_energy[m],  angular_separation[m],  rad_bins=rad_bins, energy_bin_edges=bins_energy, smoothing=0)
-        migras.append(psf)
+        m_offset = (lower <= event_offset) & (event_offset < upper)
+        for lower_e, upper_e in zip(energy_lo[0], energy_hi[0]):
+            m_energy = (lower_e <= event_energy[m_offset]) & (event_energy[m_offset] < upper_e)
+            psf, _ = np.histogram(angular_separation[m_offset][m_energy], bins=rad_bins, density=True) 
+            norm = 2 * np.pi * r
+            migras.append((psf/norm) / deg2sr)
+            # print(((psf/norm) * rad_bins.diff() * 2* np.pi * r*u.deg ).sum())
 
-    matrix = np.stack(migras)[np.newaxis, :]
-    print('PSF', matrix.shape)
+        # solid_angle = (1 - np.cos(upper - lower)) * 2 * np.pi
+        # print(solid_angle)
+        # psf = binned_psf_vs_energy(event_energy[m],  angular_separation[m],  rad_bins=rad_bins, energy_bin_edges=bins_energy, smoothing=0) / solid_angle
+
+    # print((migras[0][10] * solid_angle).sum())
+
+    matrix = np.stack(migras).reshape(len(theta_bins) - 1, len(bins_energy) - 1, -1)
+    matrix = matrix[np.newaxis, :]
     matrix = np.transpose(matrix, [0, 3, 1, 2])
-    print('PSF', matrix.shape)
     if smoothing > 0:
         a = matrix.copy()
         matrix = gaussian_filter(a, sigma=smoothing)
