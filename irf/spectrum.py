@@ -98,7 +98,7 @@ class Spectrum():
         else:
             return flux.to(1 / (u.TeV * u.s * u.cm**2))
 
-    @u.quantity_input(e_min=u.TeV, e_max=u.TeV, area=u.m**2, t_obs=u.s, solid_angle=u.deg)
+    @u.quantity_input(e_min=u.TeV, e_max=u.TeV, area=u.m**2, t_obs=u.s, solid_angle=u.sr)
     def expected_events(self, e_min, e_max, area, t_obs, solid_angle=None):
         '''
         Get the number of events which are expected to arrive from this spectral source.
@@ -124,9 +124,7 @@ class Spectrum():
             if solid_angle is None:
                 raise ValueError('solid angle needs to be specified for extended sources')
 
-            angle = solid_angle.to('rad').value
-            events = events * (1 - np.cos(angle)) * 2 * np.pi
-            events = events * u.sr
+            events = events * solid_angle
 
         # at this point the value should have no units left
         assert events.si.unit.is_unity() == True
@@ -279,16 +277,20 @@ class MCSpectrum(Spectrum):
             The total area over which the primary particles are scattered.
             Also know as the maximum_impact_distance**2 * pi.
 
-        generator_solid_angle: Quantity
+        generator_solid_angle: Quantity (steradian)
             The solid angle over which the particles were created.
             This is necessary for extended sources like the cosmic ray spectrum
-        
+
+        generator_opening_angle: Quantity (deg or rad)
+            The opening angle of the conde over which the particles were created.
+
         index: float
             The index with which the spectrum was generated. (e.g. -2.0)
     '''
 
     index = -2.0  # default for cta
-    generator_solid_angle = None
+    generator_solid_angle = 0 * u.sr
+    generator_opening_angle = 0 * u.deg
     normalization_constant = 1 / (u.TeV * u.m**2 * u.s)
 
     @u.quantity_input(e_min=u.TeV, e_max=u.TeV, generation_area=u.m**2)
@@ -298,7 +300,7 @@ class MCSpectrum(Spectrum):
             e_max,
             total_showers_simulated,
             generation_area,
-            generator_solid_angle=None,
+            generator_opening_angle=None,
             index=-2.0  # default for CTA prod3
     ):
         '''
@@ -316,8 +318,8 @@ class MCSpectrum(Spectrum):
         generation_area: Quantity
             The total area over which the primary particles are scattered.
             Also know as the maximum_impact_distance**2 * pi.
-        generator_solid_angle: Quantity
-            The solid angle over which the particles were created.
+        generator_opening_angle: Quantity (deg or rad)
+            The opening angle of the cone over which the particles were created.
             This is necessary for extended sources like the cosmic ray spectrum
         '''
         self.e_min = e_min.to('TeV')
@@ -325,14 +327,15 @@ class MCSpectrum(Spectrum):
         self.total_showers_simulated = total_showers_simulated
         self.index = index
         self.generation_area = generation_area.to('m^2')
-        self.generator_solid_angle = generator_solid_angle
+        self.generator_opening_angle = generator_opening_angle
         self.normalization_constant = 1 / (u.TeV * u.m**2 * u.s)
-        if generator_solid_angle is not None and generator_solid_angle > 0 * u.deg:
+        if generator_opening_angle is not None and generator_opening_angle > 0 * u.deg:
             self.normalization_constant = 1 / (u.TeV * u.m**2 * u.s * u.sr)
-            angle = generator_solid_angle.to('rad').value
-            angle = (1 - np.cos(angle)) * 2 * np.pi * u.sr
+            angle = generator_opening_angle.to_value('rad')
+            solid_angle = (1 - np.cos(angle)) * 2 * np.pi * u.sr
+            self.generator_solid_angle = solid_angle
 
-            N = self._integral(e_min.to('TeV'), e_max.to('TeV')) * (generation_area.to(u.m**2) * u.s * angle)
+            N = self._integral(e_min.to('TeV'), e_max.to('TeV')) * (generation_area.to(u.m**2) * u.s * solid_angle)
             self.normalization_constant = (total_showers_simulated / N) / (u.TeV * u.m**2 * u.s * u.sr)
 
         else:
@@ -401,15 +404,15 @@ class MCSpectrum(Spectrum):
         mc_min_energy = runs.mc_energy_range_min.iloc[0] * u.TeV
         mc_max_energy = runs.mc_energy_range_max.iloc[0] * u.TeV
         generation_area = (runs.mc_max_scatter_range.iloc[0] * u.m)**2 * np.pi
-        generator_solid_angle = (runs.mc_max_viewcone_radius.iloc[0] - runs.mc_min_viewcone_radius.iloc[0]) * u.deg
+        generator_opening_angle = (runs.mc_max_viewcone_radius.iloc[0] - runs.mc_min_viewcone_radius.iloc[0]) * u.deg
 
         return MCSpectrum(
             mc_min_energy,
             mc_max_energy,
             mc_num_showers * mc_num_reuse,
             generation_area,
-            generator_solid_angle=generator_solid_angle,
-            index=mc_spectral_index
+            generator_opening_angle=generator_opening_angle,
+            index=mc_spectral_index,
         )
 
 

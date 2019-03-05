@@ -5,12 +5,12 @@ import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 from astropy.coordinates.angle_utilities import angular_separation
 
-from irf.collection_area import collection_area
+from irf.collection_area import collection_area_vs_offset
 from irf.energy_dispersion import energy_migration
 from irf.psf import binned_psf_vs_energy
-from irf.background import background_vs_energy
+from irf.background import background_vs_offset
 from irf.gadf.hdus import add_fact_meta_information_to_hdu, add_cta_meta_information_to_hdu
-
+from irf.spectrum import CTAProtonSpectrum, CTAElectronSpectrum, CrabSpectrum
 
 def _make_energy_bins(energy_true, energy_prediction, bins):
     e_min = min(
@@ -30,7 +30,7 @@ def _make_energy_bins(energy_true, energy_prediction, bins):
     return bin_edges
 
 
-def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, bin_edges, num_theta_bins=5, fov=10*u.deg, sample_fraction=1.0, smoothing=0.0):
+def create_effective_area_hdu(mc_production, event_energies, event_offsets, energy_bin_edges, theta_bin_edges, sample_fraction=1.0, smoothing=0.0):
     '''
     Creates the effective area hdu to be written into a fits file accroding to the format
     described here:
@@ -41,14 +41,14 @@ def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, b
 
     mc_production : irf.spectrum.MCSpectrum
         Corsika shower production
-    true_event_energy :  array-like astropy.unit.Quantity (energy)
+    event_energies :  array-like astropy.unit.Quantity (energy)
         true energy of selected events
     event_offsets : astropy.unit.Quantity (deg)
         the offset from the pointing direction in degrees
-    bin_edges : int or arraylike
-        the energy bins.
-    fov :  astropy.unit.Quantity (degree)
-        the field of view of the telescope
+    energy_bin_edges : arraylike Quantity (TeV)
+        the energy bin edges.
+    theta_bin_edges : arraylike Quantity (deg)
+        the bin edges for the event offsets
     smoothing : float
         Amount of smoothing to apply to the generated matrices.
         Equivalent to the sigma parameter in
@@ -64,30 +64,15 @@ def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, b
 
     '''
 
-    energy_lo = bin_edges[np.newaxis, :-1]
-    energy_hi = bin_edges[np.newaxis, 1:]
+    area = collection_area_vs_offset(mc_production, event_energies, event_offsets, energy_bin_edges, theta_bin_edges, smoothing=smoothing)
+    area = area[np.newaxis, :]
+    
+    energy_lo = energy_bin_edges[np.newaxis, :-1]
+    energy_hi = energy_bin_edges[np.newaxis, 1:]
 
-    theta_bin_edges = np.linspace(0, fov.to('deg').value / 2, endpoint=True, num=num_theta_bins + 1) * u.deg
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
-    areas = []
-    for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= event_offsets) & (event_offsets < upper)
-        f = (upper.value**2 - lower.value**2) / ((fov.value / 2) ** 2) * sample_fraction
 
-        r = collection_area(
-            mc_production,
-            true_event_energy[m],
-            bin_edges=bin_edges,
-            sample_fraction=f,
-            smoothing=smoothing,
-        )
-
-        area, _, _, _, _ = r
-        areas.append(area.value)
-
-    area = np.vstack(areas)
-    area = area[np.newaxis, :] * u.m**2
     print('AEFF', area.shape, energy_lo.shape, theta_lo.shape)
     t = Table(
         {
@@ -108,7 +93,7 @@ def create_effective_area_hdu(mc_production, true_event_energy, event_offsets, b
     return hdu
 
 
-def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, event_offset, bins_e_true, num_theta_bins=5, fov=10*u.deg,  smoothing=1):
+def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, event_offset, energy_bin_edges, theta_bin_edges, smoothing=1):
     '''
     Creates the effective area hdu to be written into a fits file accroding to the format
     described here:
@@ -122,12 +107,10 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, even
         estimated energy of selected events
     event_offsets : astropy.unit.Quantity (deg)
         the offset from the pointing direction in degrees
-    bins_e_true : arraylike
+    energy_bin_edges : arraylike
         the energy bin edges.
-    num_theta_bins : int
+    theta_bin_edges : int
         the number of fov bins to use.
-    fov :  astropy.unit.Quantity (degree)
-        the field of view of the telescope
     smoothing : float
         Amount of smoothing to apply to the generated matrices.
         Equivalent to the sigma parameter in
@@ -141,26 +124,22 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, even
 
     '''
 
-    if np.isscalar(bins_e_true):
-        print('You have to provide the actual bin edges for the enrgy binning')
-        raise ValueError
     
-    bins_mu = np.linspace(0, 6, endpoint=True, num=len(bins_e_true)+2)
+    bins_mu = np.linspace(0, 6, endpoint=True, num=len(energy_bin_edges)+2)
 
-    energy_lo = bins_e_true[np.newaxis, :-1]
-    energy_hi = bins_e_true[np.newaxis, 1:]
+    energy_lo = energy_bin_edges[np.newaxis, :-1]
+    energy_hi = energy_bin_edges[np.newaxis, 1:]
 
     migra_lo = bins_mu[np.newaxis, :-1]
     migra_hi = bins_mu[np.newaxis, 1:]
 
-    theta_bin_edges = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=num_theta_bins + 1) * u.deg
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
 
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
         m = (lower <= event_offset) & (event_offset < upper)
-        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins_energy=bins_e_true, bins_mu=bins_mu, normalize=True, smoothing=smoothing)
+        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins_energy=energy_bin_edges, bins_mu=bins_mu, normalize=True, smoothing=smoothing)
         migras.append(migra.T)
 
     matrix = np.stack(migras)[np.newaxis, :]
@@ -188,7 +167,7 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, even
 
 
 
-def create_psf_hdu(event_energy, angular_separation, event_offset, bins_energy, rad_bins=20, theta_bins=5, fov=10*u.deg,  smoothing=1):
+def create_psf_hdu(event_energy, angular_separation, event_offset, energy_bin_edges,  theta_bin_edges, rad_bins=20, smoothing=1):
     '''
     Creates the effective area hdu to be written into a fits file accroding to the format
     described here:
@@ -202,12 +181,10 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, bins_energy, 
         distance to true source position
     event_offsets : astropy.unit.Quantity (deg)
         the offset from the pointing direction in degrees
-    bins_energy : astropy.unit.Quantity (deg)
+    energy_bin_edges : astropy.unit.Quantity (deg)
         the energy bin edges.
-    num_theta_bins : int
-        the number of fov bins to use.
-    fov :  astropy.unit.Quantity (degree)
-        the field of view of the telescope
+    theta_bin_edges : array-like (deg)
+        theta bins to use
     smoothing : float
         Amount of smoothing to apply to the generated matrices.
         Equivalent to the sigma parameter in
@@ -221,48 +198,26 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, bins_energy, 
 
     '''
 
-    if np.isscalar(bins_energy):
-        print('You have to provide the actual bin edges for the enrgy binning')
-        raise ValueError
     
     if np.isscalar(rad_bins):
-        rad_max = 1.5
-        rad_min = 0
-        rad_bins = np.linspace(rad_min, rad_max, rad_bins) * u.deg
-        # rad_bins = d**2/d.max()
-
-    if np.isscalar(theta_bins):
-        theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=theta_bins + 1) * u.deg
+        rad_bins = np.linspace(0, theta_bin_edges.max().to_value(u.deg), rad_bins + 1) * u.deg
 
     rad_lo = rad_bins[np.newaxis, :-1]
     rad_hi = rad_bins[np.newaxis, 1:]
-    
-    energy_lo = bins_energy[np.newaxis, :-1]
-    energy_hi = bins_energy[np.newaxis, 1:]
-    
-    theta_lo = theta_bins[np.newaxis, :-1]
-    theta_hi = theta_bins[np.newaxis, 1:]
 
-    r = ((rad_bins[:-1] + rad_bins[1:]) / 2).to_value(u.deg)
-    deg2sr = (np.pi/180)**2
+    energy_lo = energy_bin_edges[np.newaxis, :-1]
+    energy_hi = energy_bin_edges[np.newaxis, 1:]
+    
+    theta_lo = theta_bin_edges[np.newaxis, :-1]
+    theta_hi = theta_bin_edges[np.newaxis, 1:]
+
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m_offset = (lower <= event_offset) & (event_offset < upper)
-        for lower_e, upper_e in zip(energy_lo[0], energy_hi[0]):
-            m_energy = (lower_e <= event_energy[m_offset]) & (event_energy[m_offset] < upper_e)
-            psf, _ = np.histogram(angular_separation[m_offset][m_energy], bins=rad_bins, density=True) 
-            norm = 2 * np.pi * r
-            migras.append((psf/norm) / deg2sr)
-            # print(((psf/norm) * rad_bins.diff() * 2* np.pi * r*u.deg ).sum())
+        m = (lower <= event_offset) & (event_offset < upper)
+        psf = binned_psf_vs_energy(event_energy[m],  angular_separation[m],  rad_bins=rad_bins, energy_bin_edges=energy_bin_edges, smoothing=0)
+        migras.append(psf)
 
-        # solid_angle = (1 - np.cos(upper - lower)) * 2 * np.pi
-        # print(solid_angle)
-        # psf = binned_psf_vs_energy(event_energy[m],  angular_separation[m],  rad_bins=rad_bins, energy_bin_edges=bins_energy, smoothing=0) / solid_angle
-
-    # print((migras[0][10] * solid_angle).sum())
-
-    matrix = np.stack(migras).reshape(len(theta_bins) - 1, len(bins_energy) - 1, -1)
-    matrix = matrix[np.newaxis, :]
+    matrix = np.stack(migras)[np.newaxis, :]
     matrix = np.transpose(matrix, [0, 3, 1, 2])
     if smoothing > 0:
         a = matrix.copy()
@@ -290,74 +245,87 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, bins_energy, 
     return hdu
 
 
+def create_bkg_hdu(
+    mc_production_proton,
+    proton_event_energies,
+    proton_event_offset,
+    mc_production_electron,
+    electron_event_energies,
+    electron_event_offset,
+    energy_bin_edges,
+    theta_bin_edges,
+    smoothing=1
+):
 
-def create_bkg_hdu(event_energy, event_offset, weights, bins_energy, theta_bins=5, fov=10*u.deg,  smoothing=1):
-    '''
-    Creates the effective area hdu to be written into a fits file accroding to the format
-    described here:
-    http://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/aeff/index.html
+    t_assumed_obs = 1*u.s
 
-    Parameters
-    ----------
-    event_energy :  array-like astropy.unit.Quantity (energy)
-        energy of selected events
-    event_offsets : astropy.unit.Quantity (deg)
-        the offset from the pointing direction in degrees
-    weights : astropy.unit.Quantity (deg)
-        the weight of the events
-    bins_energy : astropy.unit.Quantity (deg)
-        the energy bin edges.
-    theta_bins : int
-        the number of fov bins to use.
-    fov :  astropy.unit.Quantity (degree)
-        the field of view of the telescope
-    smoothing : float
-        Amount of smoothing to apply to the generated matrices.
-        Equivalent to the sigma parameter in
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html    
+    proton_collection_area = collection_area_vs_offset(
+        mc_production_proton, 
+        proton_event_energies, 
+        proton_event_offset,
+        energy_bin_edges,
+        theta_bin_edges,
+    )
+    proton_weights = mc_production_proton.reweigh_to_other_spectrum(
+        CTAProtonSpectrum(),
+        proton_event_energies,
+        t_assumed_obs=t_assumed_obs
+    )
+    proton_bkg = background_vs_offset(
+        proton_event_energies,
+        proton_event_offset,
+        weights=proton_weights,
+        energy_bin_edges=energy_bin_edges,
+        theta_bin_edges=theta_bin_edges,
+    )
+    proton_bkg = proton_bkg/proton_collection_area/t_assumed_obs/mc_production_proton.generator_solid_angle/energy_bin_edges.diff()
 
-    Returns
-    -------
 
-    astropy.io.fits.hdu
-        The fits hdu as required by the GADF
+    electron_collection_area = collection_area_vs_offset(
+        mc_production_electron, 
+        electron_event_energies, 
+        electron_event_offset,
+        energy_bin_edges,
+        theta_bin_edges,
+    )
+    electron_weights = mc_production_electron.reweigh_to_other_spectrum(
+        CTAElectronSpectrum(),
+        electron_event_energies,
+        t_assumed_obs=t_assumed_obs
+    )
+    electron_bkg = background_vs_offset(
+        electron_event_energies,
+        electron_event_offset,
+        weights=electron_weights,
+        energy_bin_edges=energy_bin_edges,
+        theta_bin_edges=theta_bin_edges
+    )
+    electron_bkg = electron_bkg/electron_collection_area/t_assumed_obs/mc_production_electron.generator_solid_angle/energy_bin_edges.diff()
 
-    '''
-
-    if np.isscalar(bins_energy):
-        print('You have to provide the actual bin edges for the enrgy binning')
-        raise ValueError
+    energy_lo = energy_bin_edges[np.newaxis, :-1]
+    energy_hi = energy_bin_edges[np.newaxis, 1:]
     
-    if np.isscalar(theta_bins):
-        theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=theta_bins + 1) * u.deg
-
-    energy_lo = bins_energy[np.newaxis, :-1]
-    energy_hi = bins_energy[np.newaxis, 1:]
+    theta_lo = theta_bin_edges[np.newaxis, :-1]
+    theta_hi = theta_bin_edges[np.newaxis, 1:]
+    # transpose background matrix here. See https://github.com/gammapy/gammapy/issues/2067
+    matrix = electron_bkg + proton_bkg
+    # TODO this doesnt make sense to me
+    matrix[np.isnan(matrix)] = 0 
+    matrix = matrix.T[np.newaxis, :]
     
-    theta_lo = theta_bins[np.newaxis, :-1]
-    theta_hi = theta_bins[np.newaxis, 1:]
-
-    migras = []
-    for lower, upper in zip(theta_lo[0], theta_hi[0]):
-        m = (lower <= event_offset) & (event_offset < upper)
-        bkg = background_vs_energy(event_energy[m], weights[m], energy_bins=bins_energy, smoothing=0)
-        migras.append(bkg)
-
-    # transpose here. See https://github.com/gammapy/gammapy/issues/2067
-    matrix = np.stack(migras).T[np.newaxis, :]
-
     if smoothing > 0:
         a = matrix.copy()
         matrix = gaussian_filter(a, sigma=smoothing)
-
-    print('BKG', matrix.shape, energy_lo.shape, theta_lo.shape)
+    
+    print('BKG', matrix.shape)
+    
     t = Table(
         {
             'ENERG_LO': energy_lo,
             'ENERG_HI': energy_hi,
             'THETA_LO': theta_lo,
             'THETA_HI': theta_hi,
-            'BKG': matrix/u.sr/u.s/u.m**2,
+            'BKG': matrix,
         }
     )
 

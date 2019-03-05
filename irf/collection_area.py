@@ -5,6 +5,35 @@ import astropy.units as u
 
 from scipy.ndimage.filters import gaussian_filter
 
+def collection_area_vs_offset(
+    mc_production,
+    event_energies,
+    event_offsets,
+    energy_bins,
+    theta_bins,
+    sample_fraction=1,
+    smoothing=0,
+):
+    areas = []
+    for lower, upper in zip(theta_bins[:-1], theta_bins[1:]):
+        m = (lower <= event_offsets) & (event_offsets < upper)
+        f = (upper.value**2 - lower.value**2) / ((theta_bins.max().value) ** 2) * sample_fraction
+
+        r = collection_area(
+            mc_production,
+            event_energies[m],
+            bin_edges=energy_bins,
+            sample_fraction=f,
+            smoothing=smoothing,
+        )
+
+        area, _, _, = r
+        areas.append(area)
+
+    # np.vstack does weird things to the units
+    area = np.vstack([area.value for area in areas]) * areas[0].unit
+    return area
+
 
 def histograms(
         all_events,
@@ -42,7 +71,7 @@ def histograms(
 @u.quantity_input(bin_edges=u.TeV)
 def collection_area(
         mc_production,
-        selected_events,
+        selected_event_energies,
         bin_edges,
         sample_fraction=1.0,
         smoothing=0,
@@ -54,7 +83,7 @@ def collection_area(
     ----------
     mc_production: MCSpectrum instance
         MCSpectrum instance describing the MC production
-    selected_events: array-like
+    selected_event_energies: array-like
         Quantity which should be histogrammed for all selected events
     bin_edges:array-like
         bin edges for the histogram
@@ -68,19 +97,13 @@ def collection_area(
         The amount of smoothing to apply to the resulting matrix
     '''
 
-    scatter_radius = np.sqrt(mc_production.generation_area / np.pi) 
-
-
     hist_all = mc_production.expected_events_for_bins(bin_edges)
     hist_selected, _ = np.histogram(
-        selected_events,
+        selected_event_energies,
         bins=bin_edges,
     )
 
     hist_selected = (hist_selected / sample_fraction).astype(int)
-
-    bin_width = np.diff(bin_edges)
-    bin_center = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
     invalid = hist_selected > hist_all
     hist_selected[invalid] = hist_all[invalid]
@@ -88,13 +111,13 @@ def collection_area(
     lower_conf, upper_conf = binom_conf_interval(hist_selected, hist_all)
 
     # scale confidences to match and split
-    lower_conf = lower_conf * np.pi * scatter_radius**2
-    upper_conf = upper_conf * np.pi * scatter_radius**2
+    lower_conf = lower_conf * mc_production.generation_area
+    upper_conf = upper_conf * mc_production.generation_area
 
-    area = (hist_selected / hist_all) * np.pi * scatter_radius**2
+    area = (hist_selected / hist_all) * mc_production.generation_area
 
     if smoothing > 0:
         a = area.copy()
         area = gaussian_filter(a.value, sigma=smoothing, ) * area.unit
 
-    return area, bin_center, bin_width, lower_conf, upper_conf
+    return area, lower_conf, upper_conf

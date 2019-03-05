@@ -5,6 +5,24 @@ import astropy.units as u
 from scipy.stats import binned_statistic
 from scipy.ndimage.filters import gaussian_filter
 
+
+def background_vs_offset(event_energies, event_offset, weights, energy_bin_edges, theta_bin_edges, smoothing=0):
+    migras = []
+    for lower, upper in zip(theta_bin_edges[:-1], theta_bin_edges[1:]):
+        m = (lower <= event_offset) & (event_offset < upper)
+        bkg = background_vs_energy(event_energies[m], weights[m], energy_bins=energy_bin_edges, smoothing=0)
+        migras.append(bkg)
+
+    # transpose here. See https://github.com/gammapy/gammapy/issues/2067
+    matrix = np.stack(migras)
+
+    if smoothing > 0:
+        a = matrix.copy()
+        matrix = gaussian_filter(a, sigma=smoothing)
+    
+    return matrix
+
+
 def background_vs_energy(
     event_energies,
     weights, 

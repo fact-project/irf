@@ -26,6 +26,8 @@ def binned_psf_vs_energy(
         The amount of smoothing to apply to the resulting matrix
 
     '''
+    if np.isscalar(rad_bins):
+        rad_bins = np.linspace(0, fov.to_value(u.deg), rad_bins)
 
     energy_lo = energy_bin_edges[:-1].to_value(u.TeV)
     energy_hi = energy_bin_edges[1:].to_value(u.TeV)
@@ -33,7 +35,10 @@ def binned_psf_vs_energy(
     matrix = []
     for lower, upper in zip(energy_lo, energy_hi):
         m = (lower <= event_energy.to_value(u.TeV)) & (event_energy.to_value(u.TeV) < upper)
-        psf = binned_psf(angular_seperation[m], rad_bins=rad_bins, smoothing=0)
+        if m.sum() > 0:
+            psf = binned_psf(angular_seperation[m], rad_bins=rad_bins, smoothing=0)
+        else:
+            psf = np.zeros(len(rad_bins) - 1)
         matrix.append(psf)
     matrix = np.array(matrix)
     if smoothing > 0:
@@ -48,7 +53,6 @@ def binned_psf(
     angular_seperation,
     rad_bins=20,
     smoothing=0,
-    fov=10*u.deg,
 ):
     '''
     Calculate the binned psf for the given events.
@@ -64,9 +68,14 @@ def binned_psf(
 
     '''
     if np.isscalar(rad_bins):
-        rad_bins = np.linspace(0, fov.to_value(u.deg), rad_bins)
+        rad_bins = np.linspace(0, 2, rad_bins)
+
+    r = ((rad_bins[:-1] + rad_bins[1:]) / 2).to_value(u.deg)
+    deg2sr = (np.pi/180)**2
+    norm = 2 * np.pi * r
 
     psf, _ = np.histogram(angular_seperation.to_value(u.deg), bins=rad_bins, density=True)
+    psf = psf / norm / deg2sr
 
     if smoothing > 0:
         a = psf.copy()
