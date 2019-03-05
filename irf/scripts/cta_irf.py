@@ -122,7 +122,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_p
 
     fov = 10*u.deg # TODO make sure this is the entire FoV
     
-    energy_bins = np.logspace(-2, 2, num=25 + 1) * u.TeV
+    energy_bins = np.logspace(-2, 2, num=125 + 1) * u.TeV
     theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=4 + 1) * u.deg
     
     gamma_events, mc_production_gammas  = load_data(gammas_diffuse_path, cuts_path, pointing=pointing)
@@ -141,6 +141,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_p
         gamma_event_offsets,
         energy_bin_edges=energy_bins,
         theta_bin_edges=theta_bins,
+        smoothing=2,
     )
     hdus.add_cta_meta_information_to_hdu(a_eff_hdu)
 
@@ -151,6 +152,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_p
         gamma_event_offsets,
         energy_bin_edges=energy_bins,
         theta_bin_edges=theta_bins,
+        smoothing=0.5,
     )
     hdus.add_cta_meta_information_to_hdu(e_disp_hdu)
 
@@ -162,7 +164,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_p
         energy_bin_edges=energy_bins,
         theta_bin_edges=theta_bins,
         rad_bins=100,
-        smoothing=1
+        smoothing=0.2, 
     )
     hdus.add_cta_meta_information_to_hdu(psf_hdu)
 
@@ -188,6 +190,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_p
         electron_offsets,
         energy_bins,
         theta_bins,
+        smoothing=1,
     )
     hdus.add_cta_meta_information_to_hdu(bkg_hdu)
  

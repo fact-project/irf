@@ -73,7 +73,7 @@ def create_effective_area_hdu(mc_production, event_energies, event_offsets, ener
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
 
-    print('AEFF', area.shape, energy_lo.shape, theta_lo.shape)
+    print('AEFF', area.shape, area.unit)
     t = Table(
         {
             'ENERG_LO': energy_lo,
@@ -125,7 +125,7 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, even
     '''
 
     
-    bins_mu = np.linspace(0, 6, endpoint=True, num=len(energy_bin_edges)+2)
+    bins_mu = np.linspace(0, 3, endpoint=True, num=300)
 
     energy_lo = energy_bin_edges[np.newaxis, :-1]
     energy_hi = energy_bin_edges[np.newaxis, 1:]
@@ -139,10 +139,14 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, even
     migras = []
     for lower, upper in zip(theta_lo[0], theta_hi[0]):
         m = (lower <= event_offset) & (event_offset < upper)
-        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins_energy=energy_bin_edges, bins_mu=bins_mu, normalize=True, smoothing=smoothing)
+        migra, bins_e_true, bins_mu = energy_migration(true_event_energy[m], predicted_event_energy[m], bins_energy=energy_bin_edges, bins_mu=bins_mu, normalize=False, smoothing=0)
         migras.append(migra.T)
 
     matrix = np.stack(migras)[np.newaxis, :]
+    if smoothing > 0:
+        a = matrix.copy()
+        matrix = gaussian_filter(a, sigma=smoothing)
+
     print('EDISP', matrix.shape)
     t = Table(
         {
@@ -218,11 +222,12 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, energy_bin_ed
         migras.append(psf)
 
     matrix = np.stack(migras)[np.newaxis, :]
-    matrix = np.transpose(matrix, [0, 3, 1, 2])
+    matrix = np.transpose(matrix, [0, 3, 1, 2])/u.sr
     if smoothing > 0:
         a = matrix.copy()
-        matrix = gaussian_filter(a, sigma=smoothing)
+        matrix = gaussian_filter(a, sigma=smoothing) * matrix.unit
 
+    print('PSF', matrix.shape, matrix.unit)
     t = Table(
         {
             'ENERG_LO': energy_lo,
@@ -231,7 +236,7 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, energy_bin_ed
             'RAD_HI': rad_hi,
             'THETA_LO': theta_lo,
             'THETA_HI': theta_hi,
-            'RPSF': matrix / u.sr,
+            'RPSF': matrix,
         }
     )
 
@@ -278,7 +283,7 @@ def create_bkg_hdu(
         energy_bin_edges=energy_bin_edges,
         theta_bin_edges=theta_bin_edges,
     )
-    proton_bkg = proton_bkg/proton_collection_area/t_assumed_obs/mc_production_proton.generator_solid_angle/energy_bin_edges.diff()
+    proton_bkg = proton_bkg/proton_collection_area/t_assumed_obs/energy_bin_edges.diff()
 
 
     electron_collection_area = collection_area_vs_offset(
@@ -300,7 +305,7 @@ def create_bkg_hdu(
         energy_bin_edges=energy_bin_edges,
         theta_bin_edges=theta_bin_edges
     )
-    electron_bkg = electron_bkg/electron_collection_area/t_assumed_obs/mc_production_electron.generator_solid_angle/energy_bin_edges.diff()
+    electron_bkg = electron_bkg/electron_collection_area/t_assumed_obs/energy_bin_edges.diff()
 
     energy_lo = energy_bin_edges[np.newaxis, :-1]
     energy_hi = energy_bin_edges[np.newaxis, 1:]
@@ -311,13 +316,18 @@ def create_bkg_hdu(
     matrix = electron_bkg + proton_bkg
     # TODO this doesnt make sense to me
     matrix[np.isnan(matrix)] = 0 
+
+    # this wants per MeV units for some reason. See https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/bkg/index.html
+    matrix = matrix.to(1/u.s/u.sr/u.m**2/u.MeV)
+
     matrix = matrix.T[np.newaxis, :]
+    
     
     if smoothing > 0:
         a = matrix.copy()
-        matrix = gaussian_filter(a, sigma=smoothing)
+        matrix = gaussian_filter(a, sigma=smoothing) * matrix.unit
     
-    print('BKG', matrix.shape)
+    print('BKG', matrix.shape, matrix.unit, 'maximum: ----', matrix.max(), ', min---', matrix.min())
     
     t = Table(
         {

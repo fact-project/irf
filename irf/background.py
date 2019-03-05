@@ -7,20 +7,31 @@ from scipy.ndimage.filters import gaussian_filter
 
 
 def background_vs_offset(event_energies, event_offset, weights, energy_bin_edges, theta_bin_edges, smoothing=0):
+    deg2sr = (np.pi/180)**2
+
     migras = []
     for lower, upper in zip(theta_bin_edges[:-1], theta_bin_edges[1:]):
         m = (lower <= event_offset) & (event_offset < upper)
         bkg = background_vs_energy(event_energies[m], weights[m], energy_bins=energy_bin_edges, smoothing=0)
+        r = ((upper + lower)/2).to_value(u.deg)
+        norm = 2 * np.pi * r
+        bkg = bkg / norm / deg2sr
         migras.append(bkg)
 
-    # transpose here. See https://github.com/gammapy/gammapy/issues/2067
+
+    # r = ((rad_bins[:-1] + rad_bins[1:]) / 2).to_value(u.deg)
+    # norm = 2 * np.pi * r
+
+    # psf, _ = np.histogram(angular_seperation.to_value(u.deg), bins=rad_bins, density=True)
+    # psf = psf / norm / deg2sr
+
+
     matrix = np.stack(migras)
 
     if smoothing > 0:
         a = matrix.copy()
         matrix = gaussian_filter(a, sigma=smoothing)
-    
-    return matrix
+    return matrix / u.sr
 
 
 def background_vs_energy(
