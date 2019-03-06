@@ -54,7 +54,7 @@ def timestamp_to_mjdref(timestamp, mjdref=MJDREF, location=fact.instrument.const
     '''
     timestamp = pd.Series(pd.to_datetime(timestamp))
 
-    time = Time(timestamp.asobject, location=location)
+    time = Time(timestamp, location=location)
     time = time - Time(mjdref, scale='utc', format='mjd')
 
     return np.array(time.to(u.s).value, ndmin=1) * u.s
@@ -100,11 +100,11 @@ def ontime_info_from_runs(runs):
     deadc = livetime / ontime
     deadc = deadc.value
 
-    tstart = Time(runs.run_start.asobject, location=fact.instrument.constants.LOCATION)
+    tstart = Time(runs.run_start, location=fact.instrument.constants.LOCATION)
     tstart = tstart - Time(MJDREF, scale='utc', format='mjd')
     tstart = tstart.to('s')
 
-    tstop = Time(runs.run_stop.asobject, location=fact.instrument.constants.LOCATION)
+    tstop = Time(runs.run_stop, location=fact.instrument.constants.LOCATION)
     tstop = tstop - Time(MJDREF, scale='utc', format='mjd')
     tstop = tstop.to('s')
 
