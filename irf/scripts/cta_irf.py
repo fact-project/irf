@@ -64,7 +64,7 @@ def apply_cuts(df, cuts_path, sigma=1, prediction_cuts=True, multiplicity_cuts=T
 
     return df[m]
 
-columns  = [
+COLUMNS  = [
     'alt',
     'az',
     'mc_energy',
@@ -80,7 +80,7 @@ def load_data(path, cuts_path, pointing):
     runs = fact.io.read_data(path, key='runs')
     mc_production = MCSpectrum.from_cta_runs(runs)
     
-    events = fact.io.read_data(path, key='array_events', columns=columns).dropna()
+    events = fact.io.read_data(path, key='array_events', columns=COLUMNS).dropna()
     events = apply_cuts(events, cuts_path)
 
     mc_alt = events.mc_alt.values * u.deg
