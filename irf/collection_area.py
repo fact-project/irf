@@ -18,6 +18,7 @@ def collection_area_vs_offset(
     for lower, upper in zip(theta_bins[:-1], theta_bins[1:]):
         m = (lower <= event_offsets) & (event_offsets < upper)
         f = (upper**2 - lower**2) / (mc_production.generator_opening_angle**2) * sample_fraction
+        f = f.decompose().value # wtf astropy units? 
         r = collection_area(
             mc_production,
             event_energies[m],
@@ -67,7 +68,6 @@ def histograms(
     return hist_all, hist_selected, bin_edges
 
 
-@u.quantity_input(bin_edges=u.TeV)
 def collection_area(
         mc_production,
         selected_event_energies,
@@ -105,6 +105,7 @@ def collection_area(
     hist_selected = (hist_selected / sample_fraction).astype(int)
 
     invalid = hist_selected > hist_all
+
     hist_selected[invalid] = hist_all[invalid]
     # use astropy to compute errors on that stuff
     lower_conf, upper_conf = binom_conf_interval(hist_selected, hist_all)

@@ -80,7 +80,9 @@ def create_effective_area_hdu(
         event_offsets,
         energy_bin_edges,
         theta_bin_edges,
-        smoothing=smoothing
+        smoothing=smoothing,
+        sample_fraction=sample_fraction,
+
     )
     area = area[np.newaxis, :]
     
@@ -90,7 +92,6 @@ def create_effective_area_hdu(
     theta_lo = theta_bin_edges[np.newaxis, :-1]
     theta_hi = theta_bin_edges[np.newaxis, 1:]
 
-    print('AEFF', area.shape, area.unit)
     t = Table(
         {
             'ENERG_LO': energy_lo,
@@ -356,8 +357,7 @@ def create_bkg_hdu(
     if smoothing > 0:
         a = matrix.copy()
         matrix = gaussian_filter(a, sigma=smoothing) * matrix.unit
-    
-    print('BKG', matrix.shape, matrix.unit, 'maximum: ----', matrix.max(), ', min---', matrix.min())
+
     t = Table(
         {
             'ENERG_LO': energy_lo,
@@ -377,102 +377,3 @@ def create_bkg_hdu(
 
     hdu = fits.table_to_hdu(t)
     return hdu
-
-
-# def create_bkg_hdu(
-#     mc_production_proton,
-#     proton_event_energies,
-#     proton_event_offset,
-#     mc_production_electron,
-#     electron_event_energies,
-#     electron_event_offset,
-#     energy_bin_edges,
-#     theta_bin_edges,
-#     smoothing=1
-# ):
-
-#     t_assumed_obs = 1*u.s
-
-#     proton_collection_area = collection_area_vs_offset(
-#         mc_production_proton, 
-#         proton_event_energies, 
-#         proton_event_offset,
-#         energy_bin_edges,
-#         theta_bin_edges,
-#     )
-#     proton_weights = mc_production_proton.reweigh_to_other_spectrum(
-#         CTAProtonSpectrum(),
-#         proton_event_energies,
-#         t_assumed_obs=t_assumed_obs
-#     )
-#     proton_bkg = background_vs_offset(
-#         proton_event_energies,
-#         proton_event_offset,
-#         weights=proton_weights,
-#         energy_bin_edges=energy_bin_edges,
-#         theta_bin_edges=theta_bin_edges,
-#     )
-#     proton_bkg = proton_bkg/proton_collection_area/t_assumed_obs/energy_bin_edges.diff()
-#     print(mc_production_proton.generator_solid_angle)
-
-#     electron_collection_area = collection_area_vs_offset(
-#         mc_production_electron, 
-#         electron_event_energies, 
-#         electron_event_offset,
-#         energy_bin_edges,
-#         theta_bin_edges,
-#     )
-#     electron_weights = mc_production_electron.reweigh_to_other_spectrum(
-#         CTAElectronSpectrum(),
-#         electron_event_energies,
-#         t_assumed_obs=t_assumed_obs
-#     )
-#     electron_bkg = background_vs_offset(
-#         electron_event_energies,
-#         electron_event_offset,
-#         weights=electron_weights,
-#         energy_bin_edges=energy_bin_edges,
-#         theta_bin_edges=theta_bin_edges
-#     )
-#     electron_bkg = electron_bkg/electron_collection_area/t_assumed_obs/energy_bin_edges.diff()
-
-#     energy_lo = energy_bin_edges[np.newaxis, :-1]
-#     energy_hi = energy_bin_edges[np.newaxis, 1:]
-    
-#     theta_lo = theta_bin_edges[np.newaxis, :-1]
-#     theta_hi = theta_bin_edges[np.newaxis, 1:]
-#     # transpose background matrix here. See https://github.com/gammapy/gammapy/issues/2067
-#     matrix = electron_bkg + proton_bkg
-#     # TODO this doesnt make sense to me
-#     matrix[np.isnan(matrix)] = 0 
-
-#     # this wants per MeV units for some reason. See https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/bkg/index.html
-#     matrix = matrix.to(1/u.s/u.sr/u.m**2/u.MeV)
-
-#     matrix = matrix.T[np.newaxis, :]
-    
-    
-#     if smoothing > 0:
-#         a = matrix.copy()
-#         matrix = gaussian_filter(a, sigma=smoothing) * matrix.unit
-    
-#     print('BKG', matrix.shape, matrix.unit, 'maximum: ----', matrix.max(), ', min---', matrix.min())
-    
-#     t = Table(
-#         {
-#             'ENERG_LO': energy_lo,
-#             'ENERG_HI': energy_hi,
-#             'THETA_LO': theta_lo,
-#             'THETA_HI': theta_hi,
-#             'BKG': matrix,
-#         }
-#     )
-
-#     t.meta['HDUCLAS1'] = 'RESPONSE'
-#     t.meta['HDUCLAS2'] = 'BKG'
-#     t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
-#     t.meta['HDUCLAS4'] = 'BKG_2D'
-#     t.meta['EXTNAME'] = 'BACKGROUND'
-
-#     hdu = fits.table_to_hdu(t)
-#     return hdu

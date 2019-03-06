@@ -112,7 +112,8 @@ def main(showers, predictions, dl3, output_directory, prediction_threshold, thet
         e_max=5000*u.GeV,
         total_showers_simulated=6000000,
         generation_area=(max_scat*u.m)**2*np.pi,
-        index=-2.7
+        index=-2.7,
+        generator_opening_angle=6*u.deg
     )
 
     if start:
@@ -238,22 +239,24 @@ def write_irf(output_directory, mc_production, gamma_events, prediction_threshol
     min_energy = selected_gamma_events.corsika_event_header_total_energy.min() * u.GeV
     max_energy = selected_gamma_events.corsika_event_header_total_energy.max() * u.GeV
     energy_bins = np.logspace(
-        np.log10(min_energy.to('TeV').value),
-        np.log10(max_energy.to('TeV').value),
+        np.log10(min_energy.to_value('TeV')),
+        np.log10(max_energy.to_value('TeV')),
         endpoint=True,
         num=25 + 1
-    )
+    ) * u.TeV
+
+    theta_bins = np.linspace(0, 2.25, 5) * u.deg
 
     true_event_energy = (selected_gamma_events.corsika_event_header_total_energy.values * u.GeV).to('TeV')
     event_offsets = calculate_fov_offset(selected_gamma_events)
 
-    fov = 4.5 * u.deg
-
-    a_eff_hdu = response.create_effective_area_hdu(mc_production, true_event_energy, event_offsets, bin_edges=energy_bins , fov=fov, sample_fraction=1, smoothing=0.8,)
+    a_eff_hdu = response.create_effective_area_hdu(mc_production, true_event_energy, event_offsets, energy_bin_edges=energy_bins, theta_bin_edges=theta_bins, sample_fraction=1, smoothing=0.8,)
     hdus.add_fact_meta_information_to_hdu(a_eff_hdu)
     
     # a_eff_hdu = response.effective_area_hdu_for_fact(mc_production, selected_gamma_events, bins=energy_bins, sample_fraction=1, smoothing=0.8,)
-    e_disp_hdu = response.energy_dispersion_hdu(selected_gamma_events, bins=energy_bins, theta_bins=2, smoothing=0.8)
+    true_energy = selected_gamma_events.corsika_event_header_total_energy.values * u.GeV
+    estimated_energy = selected_gamma_events.gamma_energy_prediction.values * u.GeV
+    e_disp_hdu = response.create_energy_dispersion_hdu(true_energy, estimated_energy, event_offsets,  energy_bin_edges=energy_bins, theta_bin_edges=theta_bins, smoothing=0.8)
 
     a_eff_hdu.header['RAD_MAX'] = rad_max
     e_disp_hdu.header['RAD_MAX'] = rad_max
