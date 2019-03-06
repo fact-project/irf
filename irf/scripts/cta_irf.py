@@ -79,7 +79,7 @@ def load_data(path, cuts_path, pointing):
     runs = fact.io.read_data(path, key='runs')
     mc_production = MCSpectrum.from_cta_runs(runs)
     
-    events = fact.io.read_data(path, key='array_events', columns=columns)   
+    events = fact.io.read_data(path, key='array_events', columns=columns).dropna()
     events = apply_cuts(events, cuts_path)
 
     mc_alt = events.mc_alt.values * u.deg
@@ -88,7 +88,8 @@ def load_data(path, cuts_path, pointing):
     alt = events.alt.values * u.deg
     az = events.az.values * u.deg
     
-    event_offsets = calculate_fov_offset(pointing[0] * u.deg, pointing[1] * u.deg, mc_alt, mc_az)
+    # TODO i think this offset should be calculated from estimated coordinates. I should make sure tho
+    event_offsets = calculate_fov_offset(pointing[0] * u.deg, pointing[1] * u.deg, alt, az)
     events['fov_offset'] = event_offsets
 
     angular_distance = calculate_angular_separation(mc_alt, mc_az, alt, az)
@@ -117,13 +118,13 @@ def load_data(path, cuts_path, pointing):
     'output_path',
     type=click.Path(exists=False),
 )
-@click.option('-p', '--pointing', nargs=2, type=float, default=(70, 180))
+@click.option('-p', '--pointing', nargs=2, type=float, default=(70, -180))
 def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_path, pointing):
 
     fov = 10*u.deg # TODO make sure this is the entire FoV
     
-    energy_bins = np.logspace(-2, 2, num=125 + 1) * u.TeV
-    theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=4 + 1) * u.deg
+    # energy_bins = np.logspace(-2, 2, num=100 + 1) * u.TeV
+    # theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=8 + 1) * u.deg
     
     gamma_events, mc_production_gammas  = load_data(gammas_diffuse_path, cuts_path, pointing=pointing)
     gamma_event_energies = gamma_events.mc_energy.values * u.TeV
@@ -135,62 +136,74 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_p
     primary_hdu = hdus.create_primary_hdu_cta()
 
     # create effective area hdu
+
+    energy_bins = np.logspace(-2, 2, num=30 + 1) * u.TeV
+    theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=8 + 1) * u.deg
     a_eff_hdu = response.create_effective_area_hdu(
         mc_production_gammas,
         gamma_event_energies,
         gamma_event_offsets,
         energy_bin_edges=energy_bins,
         theta_bin_edges=theta_bins,
-        smoothing=2,
+        smoothing=1,
     )
     hdus.add_cta_meta_information_to_hdu(a_eff_hdu)
 
     # create edisp hdu
+    energy_bins = np.logspace(-2, 2, num=125 + 1) * u.TeV
+    theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=8 + 1) * u.deg
     e_disp_hdu = response.create_energy_dispersion_hdu(
         gamma_event_energies,
         gamma_estimated_event_energies,
         gamma_event_offsets,
         energy_bin_edges=energy_bins,
         theta_bin_edges=theta_bins,
-        smoothing=0.5,
+        smoothing=0,
     )
     hdus.add_cta_meta_information_to_hdu(e_disp_hdu)
 
     # create psf hdu
+    energy_bins = np.logspace(-2, 2.2, num=10 + 1) * u.TeV
+    theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=6 + 1) * u.deg
     psf_hdu = response.create_psf_hdu(
         gamma_event_energies,
         gamma_event_distance_to_source,
         gamma_event_offsets,
         energy_bin_edges=energy_bins,
         theta_bin_edges=theta_bins,
-        rad_bins=100,
-        smoothing=0.2, 
+        rad_bins=50,
+        smoothing=1, 
     )
     hdus.add_cta_meta_information_to_hdu(psf_hdu)
 
 
     proton_events, mc_production_protons = load_data(protons_path, cuts_path, pointing)
     proton_estimated_energies = proton_events.gamma_energy_prediction_mean.values * u.TeV
-    proton_offsets = proton_events.fov_offset.values * u.deg
-    proton_distance_to_source = proton_events.distance_to_source.values * u.deg
+    proton_alt = proton_events.alt.values * u.deg
+    proton_az = proton_events.az.values * u.deg
+    # proton_offsets = proton_events.fov_offset.values * u.deg
+    # proton_distance_to_source = proton_events.distance_to_source.values * u.deg
 
 
     electron_events, mc_production_electrons = load_data(electrons_path, cuts_path, pointing)
     electron_estimated_energies = electron_events.gamma_energy_prediction_mean.values * u.TeV
-    electron_offsets = electron_events.fov_offset.values * u.deg
-    electron_distance_to_source = electron_events.distance_to_source.values * u.deg
+    electron_alt = electron_events.alt.values * u.deg
+    electron_az = electron_events.az.values * u.deg
+    # electron_distance_to_source = electron_events.distance_to_source.values * u.deg
 
+    energy_bins = np.logspace(-2, 2, num=20 + 1) * u.TeV
 
     bkg_hdu = response.create_bkg_hdu(
         mc_production_protons,
         proton_estimated_energies,
-        proton_offsets,
+        proton_alt,
+        proton_az,
         mc_production_electrons,
         electron_estimated_energies,
-        electron_offsets,
+        electron_alt,
+        electron_az,
         energy_bins,
-        theta_bins,
-        smoothing=1,
+        smoothing=0.1,
     )
     hdus.add_cta_meta_information_to_hdu(bkg_hdu)
  

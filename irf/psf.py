@@ -51,7 +51,7 @@ def binned_psf_vs_energy(
 
 def binned_psf(
     angular_seperation,
-    rad_bins=20,
+    rad_bins=40,
     smoothing=0,
 ):
     '''

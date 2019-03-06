@@ -2,8 +2,10 @@ import astropy.units as u
 from astropy.io import fits
 from astropy.table import Table
 import numpy as np
+from astropy.coordinates import SkyCoord, AltAz
+from ctapipe.coordinates import NominalFrame
 from scipy.ndimage.filters import gaussian_filter
-from astropy.coordinates.angle_utilities import angular_separation
+# from astropy.coordinates.angle_utilities import angular_separation
 
 from irf.collection_area import collection_area_vs_offset
 from irf.energy_dispersion import energy_migration
@@ -30,7 +32,15 @@ def _make_energy_bins(energy_true, energy_prediction, bins):
     return bin_edges
 
 
-def create_effective_area_hdu(mc_production, event_energies, event_offsets, energy_bin_edges, theta_bin_edges, sample_fraction=1.0, smoothing=0.0):
+def create_effective_area_hdu(
+    mc_production,
+    event_energies,
+    event_offsets,
+    energy_bin_edges,
+    theta_bin_edges,
+    sample_fraction=1.0,
+    smoothing=0.0
+):
     '''
     Creates the effective area hdu to be written into a fits file accroding to the format
     described here:
@@ -64,7 +74,14 @@ def create_effective_area_hdu(mc_production, event_energies, event_offsets, ener
 
     '''
 
-    area = collection_area_vs_offset(mc_production, event_energies, event_offsets, energy_bin_edges, theta_bin_edges, smoothing=smoothing)
+    area = collection_area_vs_offset(
+        mc_production,
+        event_energies,
+        event_offsets,
+        energy_bin_edges,
+        theta_bin_edges,
+        smoothing=smoothing
+    )
     area = area[np.newaxis, :]
     
     energy_lo = energy_bin_edges[np.newaxis, :-1]
@@ -249,78 +266,91 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, energy_bin_ed
     hdu = fits.table_to_hdu(t)
     return hdu
 
-
 def create_bkg_hdu(
     mc_production_proton,
     proton_event_energies,
-    proton_event_offset,
+    proton_event_alt,
+    proton_event_az,
     mc_production_electron,
     electron_event_energies,
-    electron_event_offset,
+    electron_event_alt,
+    electron_event_az,
     energy_bin_edges,
-    theta_bin_edges,
     smoothing=1
 ):
 
     t_assumed_obs = 1*u.s
 
-    proton_collection_area = collection_area_vs_offset(
-        mc_production_proton, 
-        proton_event_energies, 
-        proton_event_offset,
-        energy_bin_edges,
-        theta_bin_edges,
-    )
+    # proton_collection_area = collection_area_vs_offset(
+    #     mc_production_proton, 
+    #     proton_event_energies, 
+    #     proton_event_offset,
+    #     energy_bin_edges,
+    #     theta_bin_edges,
+    # )
     proton_weights = mc_production_proton.reweigh_to_other_spectrum(
         CTAProtonSpectrum(),
         proton_event_energies,
         t_assumed_obs=t_assumed_obs
     )
-    proton_bkg = background_vs_offset(
-        proton_event_energies,
-        proton_event_offset,
-        weights=proton_weights,
-        energy_bin_edges=energy_bin_edges,
-        theta_bin_edges=theta_bin_edges,
-    )
-    proton_bkg = proton_bkg/proton_collection_area/t_assumed_obs/energy_bin_edges.diff()
 
-
-    electron_collection_area = collection_area_vs_offset(
-        mc_production_electron, 
-        electron_event_energies, 
-        electron_event_offset,
-        energy_bin_edges,
-        theta_bin_edges,
-    )
+    # electron_collection_area = collection_area_vs_offset(
+    #     mc_production_electron, 
+    #     electron_event_energies, 
+    #     electron_event_offset,
+    #     energy_bin_edges,
+    #     theta_bin_edges,
+    # )
     electron_weights = mc_production_electron.reweigh_to_other_spectrum(
         CTAElectronSpectrum(),
         electron_event_energies,
         t_assumed_obs=t_assumed_obs
     )
-    electron_bkg = background_vs_offset(
-        electron_event_energies,
-        electron_event_offset,
-        weights=electron_weights,
-        energy_bin_edges=energy_bin_edges,
-        theta_bin_edges=theta_bin_edges
+
+    det_bins = np.linspace(-6, 6, 40+1) * u.deg
+    
+    pointing_position = SkyCoord(alt=70 * u.deg, az=-180 * u.deg, frame=AltAz())
+    nominal = NominalFrame(origin=pointing_position)
+    
+    proton_altaz = SkyCoord(alt=proton_event_alt, az=proton_event_az, frame=AltAz())
+    proton_nominal = proton_altaz.transform_to(nominal)
+    proton_daz = proton_nominal.delta_az.to_value(u.deg)
+    proton_dalt = proton_nominal.delta_alt.to_value(u.deg)
+
+    electron_altaz = SkyCoord(alt=electron_event_alt, az=electron_event_az, frame=AltAz())
+    electron_nominal = electron_altaz.transform_to(nominal)
+    electron_daz = electron_nominal.delta_az.to_value(u.deg)
+    electron_dalt = electron_nominal.delta_alt.to_value(u.deg)
+    
+    proton_bkg, _ = np.histogramdd(
+        (proton_event_energies, proton_dalt, proton_daz),
+        bins=(energy_bin_edges, det_bins, det_bins),
+        weights=proton_weights,
+        # density=True,
     )
-    electron_bkg = electron_bkg/electron_collection_area/t_assumed_obs/energy_bin_edges.diff()
+
+    electron_bkg, _ = np.histogramdd(
+        (electron_event_energies, electron_dalt, electron_daz),
+        bins=(energy_bin_edges, det_bins, det_bins),
+        weights=electron_weights,
+        # density=True,
+    )
+    
+    solid_angle = (1 - np.cos(np.diff(det_bins).to_value(u.rad))) * 2 * np.pi * u.sr
+    matrix = electron_bkg + proton_bkg
+    matrix = matrix / solid_angle / u.s 
+    matrix = matrix / energy_bin_edges.diff()[:, np.newaxis, np.newaxis]
 
     energy_lo = energy_bin_edges[np.newaxis, :-1]
     energy_hi = energy_bin_edges[np.newaxis, 1:]
     
-    theta_lo = theta_bin_edges[np.newaxis, :-1]
-    theta_hi = theta_bin_edges[np.newaxis, 1:]
-    # transpose background matrix here. See https://github.com/gammapy/gammapy/issues/2067
-    matrix = electron_bkg + proton_bkg
-    # TODO this doesnt make sense to me
-    matrix[np.isnan(matrix)] = 0 
+    det_lo = det_bins[np.newaxis, :-1]
+    det_hi = det_bins[np.newaxis, 1:]
 
-    # this wants per MeV units for some reason. See https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/bkg/index.html
-    matrix = matrix.to(1/u.s/u.sr/u.m**2/u.MeV)
-
-    matrix = matrix.T[np.newaxis, :]
+    # this wants per MeV units for some reason.
+    # See https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/bkg/index.html
+    matrix = matrix.to(1/u.s/u.sr/u.MeV)
+    matrix = matrix[np.newaxis, :]
     
     
     if smoothing > 0:
@@ -328,22 +358,121 @@ def create_bkg_hdu(
         matrix = gaussian_filter(a, sigma=smoothing) * matrix.unit
     
     print('BKG', matrix.shape, matrix.unit, 'maximum: ----', matrix.max(), ', min---', matrix.min())
-    
     t = Table(
         {
             'ENERG_LO': energy_lo,
             'ENERG_HI': energy_hi,
-            'THETA_LO': theta_lo,
-            'THETA_HI': theta_hi,
+            'DETX_LO': det_lo,
+            'DETX_HI': det_hi,
+            'DETY_LO': det_lo,
+            'DETY_HI': det_hi,
             'BKG': matrix,
         }
     )
-
     t.meta['HDUCLAS1'] = 'RESPONSE'
     t.meta['HDUCLAS2'] = 'BKG'
     t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
-    t.meta['HDUCLAS4'] = 'BKG_2D'
+    t.meta['HDUCLAS4'] = 'BKG_3D'
     t.meta['EXTNAME'] = 'BACKGROUND'
 
     hdu = fits.table_to_hdu(t)
     return hdu
+
+
+# def create_bkg_hdu(
+#     mc_production_proton,
+#     proton_event_energies,
+#     proton_event_offset,
+#     mc_production_electron,
+#     electron_event_energies,
+#     electron_event_offset,
+#     energy_bin_edges,
+#     theta_bin_edges,
+#     smoothing=1
+# ):
+
+#     t_assumed_obs = 1*u.s
+
+#     proton_collection_area = collection_area_vs_offset(
+#         mc_production_proton, 
+#         proton_event_energies, 
+#         proton_event_offset,
+#         energy_bin_edges,
+#         theta_bin_edges,
+#     )
+#     proton_weights = mc_production_proton.reweigh_to_other_spectrum(
+#         CTAProtonSpectrum(),
+#         proton_event_energies,
+#         t_assumed_obs=t_assumed_obs
+#     )
+#     proton_bkg = background_vs_offset(
+#         proton_event_energies,
+#         proton_event_offset,
+#         weights=proton_weights,
+#         energy_bin_edges=energy_bin_edges,
+#         theta_bin_edges=theta_bin_edges,
+#     )
+#     proton_bkg = proton_bkg/proton_collection_area/t_assumed_obs/energy_bin_edges.diff()
+#     print(mc_production_proton.generator_solid_angle)
+
+#     electron_collection_area = collection_area_vs_offset(
+#         mc_production_electron, 
+#         electron_event_energies, 
+#         electron_event_offset,
+#         energy_bin_edges,
+#         theta_bin_edges,
+#     )
+#     electron_weights = mc_production_electron.reweigh_to_other_spectrum(
+#         CTAElectronSpectrum(),
+#         electron_event_energies,
+#         t_assumed_obs=t_assumed_obs
+#     )
+#     electron_bkg = background_vs_offset(
+#         electron_event_energies,
+#         electron_event_offset,
+#         weights=electron_weights,
+#         energy_bin_edges=energy_bin_edges,
+#         theta_bin_edges=theta_bin_edges
+#     )
+#     electron_bkg = electron_bkg/electron_collection_area/t_assumed_obs/energy_bin_edges.diff()
+
+#     energy_lo = energy_bin_edges[np.newaxis, :-1]
+#     energy_hi = energy_bin_edges[np.newaxis, 1:]
+    
+#     theta_lo = theta_bin_edges[np.newaxis, :-1]
+#     theta_hi = theta_bin_edges[np.newaxis, 1:]
+#     # transpose background matrix here. See https://github.com/gammapy/gammapy/issues/2067
+#     matrix = electron_bkg + proton_bkg
+#     # TODO this doesnt make sense to me
+#     matrix[np.isnan(matrix)] = 0 
+
+#     # this wants per MeV units for some reason. See https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/bkg/index.html
+#     matrix = matrix.to(1/u.s/u.sr/u.m**2/u.MeV)
+
+#     matrix = matrix.T[np.newaxis, :]
+    
+    
+#     if smoothing > 0:
+#         a = matrix.copy()
+#         matrix = gaussian_filter(a, sigma=smoothing) * matrix.unit
+    
+#     print('BKG', matrix.shape, matrix.unit, 'maximum: ----', matrix.max(), ', min---', matrix.min())
+    
+#     t = Table(
+#         {
+#             'ENERG_LO': energy_lo,
+#             'ENERG_HI': energy_hi,
+#             'THETA_LO': theta_lo,
+#             'THETA_HI': theta_hi,
+#             'BKG': matrix,
+#         }
+#     )
+
+#     t.meta['HDUCLAS1'] = 'RESPONSE'
+#     t.meta['HDUCLAS2'] = 'BKG'
+#     t.meta['HDUCLAS3'] = 'FULL-ENCLOSURE'
+#     t.meta['HDUCLAS4'] = 'BKG_2D'
+#     t.meta['EXTNAME'] = 'BACKGROUND'
+
+#     hdu = fits.table_to_hdu(t)
+#     return hdu

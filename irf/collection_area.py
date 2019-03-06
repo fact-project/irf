@@ -17,8 +17,7 @@ def collection_area_vs_offset(
     areas = []
     for lower, upper in zip(theta_bins[:-1], theta_bins[1:]):
         m = (lower <= event_offsets) & (event_offsets < upper)
-        f = (upper.value**2 - lower.value**2) / ((theta_bins.max().value) ** 2) * sample_fraction
-
+        f = (upper**2 - lower**2) / (mc_production.generator_opening_angle**2) * sample_fraction
         r = collection_area(
             mc_production,
             event_energies[m],
