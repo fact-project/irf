@@ -1,26 +1,23 @@
 import os
+import warnings
 
-import astropy.units as u
 import click
 import fact.io
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+import astropy.units as u
 from astropy.coordinates.angle_utilities import angular_separation
 from astropy.coordinates import SkyCoord, AltAz
-
 from astropy.io import fits
-from matplotlib.colors import LogNorm
+
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
-from tqdm import tqdm
-import warnings
+
 from ctapipe.coordinates import NominalFrame, MissingFrameAttributeWarning
 
-from irf import energy_dispersion, energy_migration
+from irf.spectrum import MCSpectrum
 from irf.gadf import hdus, response
-from irf.spectrum import MCSpectrum, CTAProtonSpectrum, CTAElectronSpectrum, CrabSpectrum
 
 
 @u.quantity_input(pointing_altitude=u.deg, pointing_azimuth=u.deg, source_altitude=u.deg, source_azimuth=u.deg)
@@ -204,7 +201,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path, output_pa
 
     energy_bins = np.logspace(-2, 2, num=20 + 1) * u.TeV
     offset_bins = np.linspace(-6, 6, 40+1) * u.deg
-    
+
     bkg_hdu = response.create_bkg_hdu(
         mc_production_protons,
         proton_estimated_energies,
@@ -219,7 +216,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path, output_pa
         smoothing=0.1,
     )
     hdus.add_cta_meta_information_to_hdu(bkg_hdu)
- 
+
 
     hdulist = fits.HDUList([primary_hdu, a_eff_hdu, e_disp_hdu, psf_hdu, bkg_hdu])
     hdulist.writeto(output_path, overwrite=True)
