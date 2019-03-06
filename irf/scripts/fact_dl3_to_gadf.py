@@ -264,7 +264,6 @@ def write_irf(output_directory, mc_production, gamma_events, prediction_threshol
     a_eff_hdu.header['PRED_MAX'] = (prediction_threshold, 'prediction threshold used to select events')
     e_disp_hdu.header['PRED_MAX'] = (prediction_threshold, 'prediction threshold used to select events')
 
-
     primary_hdu = hdus.create_primary_hdu()
 
     hdulist = fits.HDUList([primary_hdu, a_eff_hdu, e_disp_hdu])

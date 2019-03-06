@@ -6,16 +6,20 @@ import fact.io
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
 from astropy.coordinates.angle_utilities import angular_separation
+from astropy.coordinates import SkyCoord, AltAz
+
 from astropy.io import fits
 from matplotlib.colors import LogNorm
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
 from tqdm import tqdm
+import warnings
+from ctapipe.coordinates import NominalFrame, MissingFrameAttributeWarning
 
 from irf import energy_dispersion, energy_migration
 from irf.gadf import hdus, response
-# from irf import gadf, collection_area_to_irf_table, energy_dispersion_to_irf_table, collection_area, point_spread_function, psf_vs_energy, psf_to_irf_table
 from irf.spectrum import MCSpectrum, CTAProtonSpectrum, CTAElectronSpectrum, CrabSpectrum
 
 
@@ -60,7 +64,7 @@ def apply_cuts(df, cuts_path, sigma=1, prediction_cuts=True, multiplicity_cuts=T
     if multiplicity_cuts:
         multiplicity = cuts.multiplicity[0]
         m &= df.num_triggered_telescopes >= multiplicity
-    
+
     return df[m]
 
 columns  = [
@@ -87,8 +91,7 @@ def load_data(path, cuts_path, pointing):
 
     alt = events.alt.values * u.deg
     az = events.az.values * u.deg
-    
-    # TODO i think this offset should be calculated from estimated coordinates. I should make sure tho
+
     event_offsets = calculate_fov_offset(pointing[0] * u.deg, pointing[1] * u.deg, alt, az)
     events['fov_offset'] = event_offsets
 
@@ -119,13 +122,10 @@ def load_data(path, cuts_path, pointing):
     type=click.Path(exists=False),
 )
 @click.option('-p', '--pointing', nargs=2, type=float, default=(70, -180))
-def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_path, pointing):
+def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path, output_path, pointing):
 
-    fov = 10*u.deg # TODO make sure this is the entire FoV
-    
-    # energy_bins = np.logspace(-2, 2, num=100 + 1) * u.TeV
-    # theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=8 + 1) * u.deg
-    
+    fov = 10 * u.deg
+
     gamma_events, mc_production_gammas  = load_data(gammas_diffuse_path, cuts_path, pointing=pointing)
     gamma_event_energies = gamma_events.mc_energy.values * u.TeV
     gamma_estimated_event_energies = gamma_events.gamma_energy_prediction_mean.values * u.TeV
@@ -136,7 +136,6 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_p
     primary_hdu = hdus.create_primary_hdu_cta()
 
     # create effective area hdu
-
     energy_bins = np.logspace(-2, 2, num=30 + 1) * u.TeV
     theta_bins = np.linspace(0, fov.to_value(u.deg) / 2, endpoint=True, num=8 + 1) * u.deg
     a_eff_hdu = response.create_effective_area_hdu(
@@ -181,28 +180,42 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path,  output_p
     proton_estimated_energies = proton_events.gamma_energy_prediction_mean.values * u.TeV
     proton_alt = proton_events.alt.values * u.deg
     proton_az = proton_events.az.values * u.deg
-    # proton_offsets = proton_events.fov_offset.values * u.deg
-    # proton_distance_to_source = proton_events.distance_to_source.values * u.deg
-
 
     electron_events, mc_production_electrons = load_data(electrons_path, cuts_path, pointing)
     electron_estimated_energies = electron_events.gamma_energy_prediction_mean.values * u.TeV
     electron_alt = electron_events.alt.values * u.deg
     electron_az = electron_events.az.values * u.deg
-    # electron_distance_to_source = electron_events.distance_to_source.values * u.deg
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", MissingFrameAttributeWarning)
+
+        pointing_position = SkyCoord(alt=pointing[0] * u.deg, az=pointing[1] * u.deg, frame=AltAz())
+        nominal = NominalFrame(origin=pointing_position)
+        
+        proton_altaz = SkyCoord(alt=proton_alt, az=proton_az, frame=AltAz())
+        proton_nominal = proton_altaz.transform_to(nominal)
+        proton_daz = proton_nominal.delta_az.to_value(u.deg)
+        proton_dalt = proton_nominal.delta_alt.to_value(u.deg)
+
+        electron_altaz = SkyCoord(alt=electron_alt, az=electron_az, frame=AltAz())
+        electron_nominal = electron_altaz.transform_to(nominal)
+        electron_daz = electron_nominal.delta_az.to_value(u.deg)
+        electron_dalt = electron_nominal.delta_alt.to_value(u.deg)
 
     energy_bins = np.logspace(-2, 2, num=20 + 1) * u.TeV
-
+    offset_bins = np.linspace(-6, 6, 40+1) * u.deg
+    
     bkg_hdu = response.create_bkg_hdu(
         mc_production_protons,
         proton_estimated_energies,
-        proton_alt,
-        proton_az,
+        proton_dalt,
+        proton_daz,
         mc_production_electrons,
         electron_estimated_energies,
-        electron_alt,
-        electron_az,
+        electron_dalt,
+        electron_daz,
         energy_bins,
+        offset_bins,
         smoothing=0.1,
     )
     hdus.add_cta_meta_information_to_hdu(bkg_hdu)

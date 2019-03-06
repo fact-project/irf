@@ -165,7 +165,6 @@ def create_energy_dispersion_hdu(true_event_energy, predicted_event_energy, even
         a = matrix.copy()
         matrix = gaussian_filter(a, sigma=smoothing)
 
-    print('EDISP', matrix.shape)
     t = Table(
         {
             'ENERG_LO': energy_lo,
@@ -220,7 +219,6 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, energy_bin_ed
 
     '''
 
-    
     if np.isscalar(rad_bins):
         rad_bins = np.linspace(0, theta_bin_edges.max().to_value(u.deg), rad_bins + 1) * u.deg
 
@@ -245,7 +243,6 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, energy_bin_ed
         a = matrix.copy()
         matrix = gaussian_filter(a, sigma=smoothing) * matrix.unit
 
-    print('PSF', matrix.shape, matrix.unit)
     t = Table(
         {
             'ENERG_LO': energy_lo,
@@ -270,74 +267,44 @@ def create_psf_hdu(event_energy, angular_separation, event_offset, energy_bin_ed
 def create_bkg_hdu(
     mc_production_proton,
     proton_event_energies,
-    proton_event_alt,
-    proton_event_az,
+    proton_delta_alt,
+    proton_delta_az,
     mc_production_electron,
     electron_event_energies,
-    electron_event_alt,
-    electron_event_az,
+    electron_delta_alt,
+    electron_delta_az,
     energy_bin_edges,
+    det_bin_edges,
     smoothing=1
 ):
 
     t_assumed_obs = 1*u.s
 
-    # proton_collection_area = collection_area_vs_offset(
-    #     mc_production_proton, 
-    #     proton_event_energies, 
-    #     proton_event_offset,
-    #     energy_bin_edges,
-    #     theta_bin_edges,
-    # )
     proton_weights = mc_production_proton.reweigh_to_other_spectrum(
         CTAProtonSpectrum(),
         proton_event_energies,
         t_assumed_obs=t_assumed_obs
     )
 
-    # electron_collection_area = collection_area_vs_offset(
-    #     mc_production_electron, 
-    #     electron_event_energies, 
-    #     electron_event_offset,
-    #     energy_bin_edges,
-    #     theta_bin_edges,
-    # )
     electron_weights = mc_production_electron.reweigh_to_other_spectrum(
         CTAElectronSpectrum(),
         electron_event_energies,
         t_assumed_obs=t_assumed_obs
     )
-
-    det_bins = np.linspace(-6, 6, 40+1) * u.deg
-    
-    pointing_position = SkyCoord(alt=70 * u.deg, az=-180 * u.deg, frame=AltAz())
-    nominal = NominalFrame(origin=pointing_position)
-    
-    proton_altaz = SkyCoord(alt=proton_event_alt, az=proton_event_az, frame=AltAz())
-    proton_nominal = proton_altaz.transform_to(nominal)
-    proton_daz = proton_nominal.delta_az.to_value(u.deg)
-    proton_dalt = proton_nominal.delta_alt.to_value(u.deg)
-
-    electron_altaz = SkyCoord(alt=electron_event_alt, az=electron_event_az, frame=AltAz())
-    electron_nominal = electron_altaz.transform_to(nominal)
-    electron_daz = electron_nominal.delta_az.to_value(u.deg)
-    electron_dalt = electron_nominal.delta_alt.to_value(u.deg)
     
     proton_bkg, _ = np.histogramdd(
-        (proton_event_energies, proton_dalt, proton_daz),
-        bins=(energy_bin_edges, det_bins, det_bins),
+        (proton_event_energies, proton_delta_alt, proton_delta_az),
+        bins=(energy_bin_edges, det_bin_edges, det_bin_edges),
         weights=proton_weights,
-        # density=True,
     )
 
     electron_bkg, _ = np.histogramdd(
-        (electron_event_energies, electron_dalt, electron_daz),
-        bins=(energy_bin_edges, det_bins, det_bins),
+        (electron_event_energies, electron_delta_alt, electron_delta_az),
+        bins=(energy_bin_edges, det_bin_edges, det_bin_edges),
         weights=electron_weights,
-        # density=True,
     )
     
-    solid_angle = (1 - np.cos(np.diff(det_bins).to_value(u.rad))) * 2 * np.pi * u.sr
+    solid_angle = (1 - np.cos(np.diff(det_bin_edges).to_value(u.rad))) * 2 * np.pi * u.sr
     matrix = electron_bkg + proton_bkg
     matrix = matrix / solid_angle / u.s 
     matrix = matrix / energy_bin_edges.diff()[:, np.newaxis, np.newaxis]
@@ -345,8 +312,8 @@ def create_bkg_hdu(
     energy_lo = energy_bin_edges[np.newaxis, :-1]
     energy_hi = energy_bin_edges[np.newaxis, 1:]
     
-    det_lo = det_bins[np.newaxis, :-1]
-    det_hi = det_bins[np.newaxis, 1:]
+    det_lo = det_bin_edges[np.newaxis, :-1]
+    det_hi = det_bin_edges[np.newaxis, 1:]
 
     # this wants per MeV units for some reason.
     # See https://gamma-astro-data-formats.readthedocs.io/en/latest/irfs/full_enclosure/bkg/index.html
