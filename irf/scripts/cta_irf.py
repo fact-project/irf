@@ -43,7 +43,7 @@ def calculate_angular_separation(true_altitude, true_azimuth, estimated_altitude
     return angular_separation(true_lon, true_lat, lon, lat).to(u.deg)
 
 def create_interpolated_function(energies, values, sigma=1):
-    m  = ~np.isnan(values) # do not use nan values
+    m = ~np.isnan(values)  # do not use nan values
     r = gaussian_filter1d(values[m], sigma=sigma)
     f = interp1d(energies[m], r, kind='cubic', bounds_error=False, fill_value='extrapolate')
     return f
@@ -59,10 +59,13 @@ def apply_cuts(df, cuts_path, sigma=1, prediction_cuts=True, multiplicity_cuts=T
         m &= df.gamma_prediction_mean >= f_prediction(df.gamma_energy_prediction_mean)
 
     if multiplicity_cuts:
-        multiplicity = cuts.multiplicity[0]
-        m &= df.num_triggered_telescopes >= multiplicity
-
+        x0 = cuts.multiplicity.iloc[0]
+        x1 = cuts.multiplicity.iloc[-1]
+        f_mult = interp1d(cuts.e_min, cuts.multiplicity, kind='previous', bounds_error=False, fill_value=(x0, x1))
+        m &= df.num_triggered_telescopes >= f_mult(df.gamma_energy_prediction_mean)
+    
     return df[m]
+
 
 COLUMNS  = [
     'alt',
@@ -123,7 +126,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path, output_pa
 
     fov = 10 * u.deg
 
-    gamma_events, mc_production_gammas  = load_data(gammas_diffuse_path, cuts_path, pointing=pointing)
+    gamma_events, mc_production_gammas = load_data(gammas_diffuse_path, cuts_path, pointing=pointing)
     gamma_event_energies = gamma_events.mc_energy.values * u.TeV
     gamma_estimated_event_energies = gamma_events.gamma_energy_prediction_mean.values * u.TeV
     
@@ -200,7 +203,7 @@ def main(gammas_diffuse_path, protons_path, electrons_path, cuts_path, output_pa
         electron_dalt = electron_nominal.delta_alt.to_value(u.deg)
 
     energy_bins = np.logspace(-2, 2, num=20 + 1) * u.TeV
-    offset_bins = np.linspace(-6, 6, 40+1) * u.deg
+    offset_bins = np.linspace(-6, 6, 40 + 1) * u.deg
 
     bkg_hdu = response.create_bkg_hdu(
         mc_production_protons,
