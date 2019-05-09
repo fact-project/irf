@@ -7,14 +7,15 @@ import warnings
 
 @u.quantity_input(t_obs=u.hour, t_ref=u.hour)
 def relative_sensitivity(
-        n_on,
-        n_off,
-        alpha,
-        t_obs,
-        t_ref=50*u.hour,
-        target_significance=5,
-        significance_function=li_ma_significance,
-        ):
+    n_on,
+    n_off,
+    alpha,
+    t_obs,
+    t_ref=50*u.hour,
+    target_significance=5,
+    significance_function=li_ma_significance,
+    initial_guess=0.5,
+):
     '''
     Calculate the relative sensitivity defined as the flux
     relative to the reference source that is detectable with
@@ -52,6 +53,8 @@ def relative_sensitivity(
         "Analysis methods for results in gamma-ray astronomy."
         The Astrophysical Journal 272 (1983): 317-324.
         Formula (17)
+    initial_guess: float
+        Initial guess for the root finder
     '''
 
     ratio = (t_ref / t_obs).si
@@ -64,17 +67,26 @@ def relative_sensitivity(
     if np.isnan(n_on) or np.isnan(n_off):
         return np.nan
 
+    if n_on == 0 or n_off == 0:
+        return np.nan
+
+    if n_signal <= 0:
+        return np.nan
+
     def equation(relative_flux):
         n_on = n_signal * relative_flux + n_background
         return significance_function(n_on, n_off, alpha) - target_significance
 
     try:
-        phi_rel = newton(equation, x0=1.0)
+        result = newton(
+            equation,
+            x0=initial_guess,
+        )
     except RuntimeError:
         warnings.warn('Could not calculate relative significance, returning nan')
-        phi_rel = np.nan
+        return np.nan
 
-    return phi_rel
+    return result
 
 
 relative_sensitivity = np.vectorize(
