@@ -1,7 +1,8 @@
 from eventio import EventIOFile
 from eventio.iact import RunHeader, EventHeader, RunEnd
 from fact.io import to_h5py
-from multiprocessing import Pool, cpu_count
+from multiprocessing import cpu_count
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 import os
 import click
@@ -15,16 +16,17 @@ def get_headers(f):
     run_end = None
     event_headers = []
 
-    with EventIOFile(f) as cf:
-        for o in cf:
-            if isinstance(o, EventHeader):
-                event_headers.append(o.parse)
-            elif isinstance(o, RunHeader):
-                run_header = o.parse()
-            elif isinstance(o, RunEnd):
-                run_end = o.parse()
+    cf = EventIOFile(f)
 
-    return run_header, event_headers, run_end
+    for o in cf:
+        if isinstance(o, EventHeader):
+            event_headers.append(o.parse())
+        elif isinstance(o, RunHeader):
+            run_header = o.parse()
+        elif isinstance(o, RunEnd):
+            run_end = o.parse()
+
+    return run_header, np.array(event_headers), run_end
 
 
 event_columns = [
@@ -40,6 +42,9 @@ event_columns = [
     'momentum_minus_z',
     'zenith',
     'azimuth',
+    'n_reuse',
+    'viewcone_inner_angle',
+    'viewcone_outer_angle',
 ]
 
 run_header_columns = [
@@ -48,6 +53,9 @@ run_header_columns = [
     'energy_spectrum_slope',
     'energy_min',
     'energy_max',
+    'n_showers',
+    'x_scatter',
+    'y_scatter',
 ]
 
 
@@ -58,27 +66,28 @@ run_header_columns = [
      nargs=-1,
      type=click.Path(exists=True, file_okay=False, dir_okay=True),
 )
-@click.option('--infile-re', default=r'*.eventio(\.gz|\.zst)?')
-def main(outputfile, inputdir, infile_re):
+@click.option('--infile-re', default=r'.*.eventio(\.gz|\.zst)?')
+@click.option('--n-jobs', default=cpu_count(), type=int)
+def main(outputfile, inputdir, infile_re, n_jobs):
     inputfiles = []
     file_re = re.compile(infile_re)
 
     for d in tqdm(inputdir):
-        for root, dirs, files in os.walk(os.path.abspath(inputdir)):
+        for root, dirs, files in os.walk(os.path.abspath(d)):
             for f in files:
                 if file_re.match(f):
                     inputfiles.append(os.path.join(root, f))
 
     print('Processing', len(inputfiles), 'files')
-    print(*inputfiles[:10], sep='\n')
 
-    with Pool(cpu_count()) as pool:
-        results = pool.imap_unordered(get_headers, inputfiles)
+    with ProcessPoolExecutor(n_jobs) as pool:
+        futures = [pool.submit(get_headers, f) for f in inputfiles]
 
         run_headers = []
         run_ends = []
 
-        for run_header, event_headers, run_end in tqdm(results, total=len(inputfiles)):
+        for future in tqdm(as_completed(futures), total=len(inputfiles)):
+            run_header, event_headers, run_end = future.result()
 
             run_headers.append(run_header)
             run_ends.append(run_end)
