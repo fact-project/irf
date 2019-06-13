@@ -183,8 +183,8 @@ def calculate_sensitivity(
     sensitivity['count'] = grouped['relative_sensitivity'].count()
 
     invalid = (
-        (sensitivity['n_on'] <= min_events)
-        | (sensitivity['n_off'] <= min_events)
+        (sensitivity['n_on'] < min_events)
+        | (sensitivity['n_off'] < min_events)
         | (sensitivity['count'] / n_bootstrap <= 0.95)
     )
     sensitivity.loc[invalid, 'relative_sensitivity'] = np.nan
