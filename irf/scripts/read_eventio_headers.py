@@ -86,6 +86,7 @@ def main(outputfile, inputdir, infile_re, n_jobs):
         run_headers = []
         run_ends = []
 
+        reuses = []
         for future in tqdm(as_completed(futures), total=len(inputfiles)):
             run_header, event_headers, run_end = future.result()
 
@@ -94,10 +95,12 @@ def main(outputfile, inputdir, infile_re, n_jobs):
 
             df = pd.DataFrame(event_headers[event_columns])
             to_h5py(df, outputfile, key='corsika_events', mode='a')
+            reuses.append(df['n_reuse'].iloc[0])
 
         print('saving runwise information')
         runs = pd.DataFrame(np.array(run_headers)[run_header_columns])
         runs['n_events'] = np.array(run_ends)['n_events']
+        runs['n_reuse'] = reuses
 
         to_h5py(runs, outputfile, key='corsika_runs', mode='a')
         print('done')
