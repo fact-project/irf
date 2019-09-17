@@ -1,6 +1,9 @@
 import numpy as np
+
 from astropy.stats import binom_conf_interval
 import astropy.units as u
+
+from scipy.ndimage.filters import gaussian_filter
 
 
 def histograms(
@@ -8,8 +11,7 @@ def histograms(
         selected_events,
         bins,
         range=None,
-        log=True,
-        ):
+):
     '''
     Create histograms in the given bins for two vectors.
 
@@ -21,22 +23,12 @@ def histograms(
         Quantity which should be histogrammed for all selected events
     bins: int or array-like
         either number of bins or bin edges for the histogram
-    range: (float, float)
-        The lower and upper range of the bins
-    log: bool
-        flag indicating whether log10 should be applied to the values.
-
     returns: hist_all, hist_selected,  bin_edges
     '''
-
-    if log is True:
-        all_events = np.log10(all_events)
-        selected_events = np.log10(selected_events)
 
     hist_all, bin_edges = np.histogram(
         all_events,
         bins=bins,
-        range=range,
     )
 
     hist_selected, _ = np.histogram(
@@ -53,10 +45,9 @@ def collection_area(
         selected_events,
         impact,
         bins,
-        range=None,
-        log=True,
         sample_fraction=1.0,
-        ):
+        smoothing=0,
+):
     '''
     Calculate the collection area for the given events.
 
@@ -70,19 +61,20 @@ def collection_area(
         either number of bins or bin edges for the histogram
     impact: astropy Quantity of type length
         The maximal simulated impact parameter
-    log: bool
-        flag indicating whether log10 should be applied to the quantity.
     sample_fraction: float
         The fraction of `all_events` that was analysed
         to create `selected_events`
+    sample_fraction: float
+        The fraction of `all_events` that was analysed
+        to create `selected_events`
+    smoothing: float
+        The amount of smoothing to apply to the resulting matrix
     '''
 
     hist_all, hist_selected, bin_edges = histograms(
         all_events,
         selected_events,
         bins,
-        range=range,
-        log=log
     )
 
     hist_selected = (hist_selected / sample_fraction).astype(int)
@@ -99,6 +91,10 @@ def collection_area(
     lower_conf = lower_conf * np.pi * impact**2
     upper_conf = upper_conf * np.pi * impact**2
 
-    area = hist_selected / hist_all * np.pi * impact**2
+    area = (hist_selected / hist_all) * np.pi * impact**2
+
+    if smoothing > 0:
+        a = area.copy()
+        area = gaussian_filter(a.value, sigma=smoothing, ) * area.unit
 
     return area, bin_center, bin_width, lower_conf, upper_conf

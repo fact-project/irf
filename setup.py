@@ -24,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'fact_read_corsika_headers=irf.scripts.read_corsika_headers:main'
+            'fact_dl3_to_gadf=irf.scripts.fact_dl3_to_gadf:main'
         ]
     },
     zip_safe=False,
