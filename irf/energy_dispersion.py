@@ -3,28 +3,27 @@ import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 
 
-
-def _make_energy_bins(energy_true, energy_prediction, bins):
+@u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
+def _make_energy_bins(energy_true, energy_prediction, bins, e_ref=1 * u.TeV):
     e_min = min(
-        min(energy_true),
-        min(energy_prediction)
+        np.min(energy_true),
+        np.min(energy_prediction)
     )
 
     e_max = max(
-        max(energy_true),
-        max(energy_prediction)
+        np.max(energy_true),
+        np.max(energy_prediction)
     )
 
-    low = np.log10(e_min.value)
-    high = np.log10(e_max.value)
+    low = np.log10(e_min / e_ref)
+    high = np.log10(e_max / e_ref)
     bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
 
-    return bin_edges
-
+    return bin_edges * e_ref
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
-def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, smoothing=0):
+def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, smoothing=0, e_ref=1 * u.TeV):
     '''
     Creates energy dispersion matrix i.e. a histogram of e_reco vs e_true.
 
@@ -43,6 +42,8 @@ def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, 
         Amount of smoothing to apply to the generated matrices.
         Equivalent to the sigma parameter in
         https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
+    e_ref: astropy.unit.Quantity[energy]
+        Reference energy
     Returns
     -------
 
@@ -55,28 +56,25 @@ def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, 
 
     '''
     if np.isscalar(bins):
-        bins = _make_energy_bins(energy_true, energy_prediction, bins)
+        bins = _make_energy_bins(energy_true, energy_prediction, bins, e_ref=e_ref)
 
     hist, bins_e_true, bins_e_prediction = np.histogram2d(
-        energy_true.value,
-        energy_prediction,
-        bins=bins,
+        (energy_true / e_ref).to_value(u.dimensionless_unscaled),
+        (energy_prediction / e_ref).to_value(u.dimensionless_unscaled),
+        bins=(bins / e_ref).to_value(u.dimensionless_unscaled),
     )
 
     if smoothing > 0:
         hist = gaussian_filter(hist, sigma=smoothing)
 
     if normalize:
-        with np.errstate(invalid='ignore'):
-            h = hist.T
-            h = h / h.sum(axis=0)
-            hist = np.nan_to_num(h).T
+        hist = _normalize_hist(hist)
 
-    return hist, bins_e_true * energy_true.unit, bins_e_prediction * energy_true.unit
+    return hist, bins_e_true, bins_e_prediction
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
-def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10, normalize=True, smoothing=0):
+def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10, normalize=True, smoothing=0, e_ref=1 * u.TeV):
     '''
     Creates energy migration matrix i.e. a histogram of e_reco/e_true vs e_trueself.
 
@@ -97,6 +95,8 @@ def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10,
         Amount of smoothing to apply to the generated matrices.
         Equivalent to the sigma parameter in
         https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
+    e_ref: astropy.unit.Quantity[energy]
+        Reference energy
     Returns
     -------
 
@@ -109,26 +109,32 @@ def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10,
 
     '''
     if np.isscalar(bins_energy):
-        bins_energy = _make_energy_bins(energy_true, energy_prediction, bins_energy)
+        bins_energy = _make_energy_bins(
+            energy_true, energy_prediction, bins_energy, e_ref=e_ref
+        )
 
-    migra = (energy_prediction / energy_true).si.value
+    migra = (energy_prediction / energy_true).to_value(u.dimensionless_unscaled)
 
     if np.isscalar(bins_mu):
-        bins_mu = np.linspace(0, 6, endpoint=True, num=bins_mu + 1)
+        bins_mu = np.linspace(0, 6, bins_mu + 1)
 
     hist, bins_e_true, bins_mu = np.histogram2d(
-        energy_true.value,
+        (energy_true / e_ref).to_value(u.dimensionless_unscaled),
         migra,
-        bins=[bins_energy, bins_mu],
+        bins=[(bins_energy / e_ref).to_value(u.dimensionless_unscaled), bins_mu],
     )
 
     if smoothing > 0:
-        hist = gaussian_filter(hist, sigma=smoothing, )
+        hist = gaussian_filter(hist, sigma=smoothing)
 
     if normalize:
-        with np.errstate(invalid='ignore'):
-            h = hist.T
-            h = h / h.sum(axis=0)
-            hist = np.nan_to_num(h).T
+        hist = _normalize_hist(hist)
 
-    return hist, bins_energy * energy_true.unit, bins_mu
+    return hist, bins_energy, bins_mu
+
+
+def _normalize_hist(hist):
+    with np.errstate(invalid='ignore'):
+        h = hist.T
+        h = h / h.sum(axis=0)
+        return np.nan_to_num(h).T
