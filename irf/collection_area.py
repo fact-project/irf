@@ -10,7 +10,6 @@ def histograms(
         all_events,
         selected_events,
         bins,
-        range=None,
 ):
     '''
     Create histograms in the given bins for two vectors.
@@ -64,9 +63,6 @@ def collection_area(
     sample_fraction: float
         The fraction of `all_events` that was analysed
         to create `selected_events`
-    sample_fraction: float
-        The fraction of `all_events` that was analysed
-        to create `selected_events`
     smoothing: float
         The amount of smoothing to apply to the resulting matrix
     '''
@@ -94,7 +90,6 @@ def collection_area(
     area = (hist_selected / hist_all) * np.pi * impact**2
 
     if smoothing > 0:
-        a = area.copy()
-        area = gaussian_filter(a.value, sigma=smoothing, ) * area.unit
+        area = gaussian_filter(area.value, sigma=smoothing) * area.unit
 
     return area, bin_center, bin_width, lower_conf, upper_conf

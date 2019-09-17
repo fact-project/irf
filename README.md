@@ -1,8 +1,6 @@
 # FACT irf
 Tools to calculate IRFs (instrument response functions) for the FACT telescope.
 
-Install pyeventio first `pip install eventio==0.3.0`.
-
 # Joint Crab Data and the FACT Open Data Release
 
 The FACT open data release contains 10.6 hours of Crab Nebula observations taken in October 2013 by the First G-APD Cherenkov Telescope (FACT)

@@ -11,7 +11,6 @@ import pandas as pd
 from astropy.table import Table
 from astropy.time import Time
 import numpy as np
-import datetime
 from irf.gadf.time import timestamp_to_mjdref, ontime_info_from_runs, TIME_INFO
 
 
@@ -41,12 +40,11 @@ def create_primary_hdu():
     header['OBSERVER'] = 'The FACT collaboration'
     header['COMMENT'] = 'FACT OGA.'
     header['COMMENT'] = 'See https://gamma-astro-data-formats.readthedocs.io/en/latest/'
-    header['COMMENT'] = 'This file was created by https://github.com/fact-project/irf'
-    header['COMMENT'] = 'See our full analysis on GitHub'
+    header['COMMENT'] = 'See our Open Crab analysis on GitHub'
     header['COMMENT'] = 'https://github.com/fact-project/open_crab_sample_analysis'
 
-    now = Time.now().iso
-    header['COMMENT'] = f'This file was created on {now}'
+    header['CREATOR'] = 'This file was created by https://github.com/fact-project/irf'
+    header['DATE'] = Time.now().iso
 
     return fits.PrimaryHDU(header=header)
 
@@ -63,17 +61,23 @@ def create_events_hdu(dl3, run):
     event_id = dl3.index
 
     # convert from hour angles to deg
-    ra = dl3.ra_prediction.values * u.hourangle
+    ra = u.Quantity(dl3.ra_prediction.values, u.hourangle, copy=False)
     ra = ra.to('deg')
 
-    dec = dl3.dec_prediction.values * u.deg
+    dec = u.Quantity(dl3.dec_prediction.values, u.deg, copy=False)
 
     # convert to TeV energy
-    energy = dl3.gamma_energy_prediction.values * u.GeV
+    energy = u.Quantity(dl3.gamma_energy_prediction.values, u.GeV, copy=False)
     energy = energy.to('TeV')
 
     timestamp = timestamp_to_mjdref(dl3.timestamp)
-    t = Table({'EVENT_ID': event_id, 'ENERGY': energy, 'DEC': dec, 'RA': ra, 'TIME': timestamp})
+    t = Table({
+        'EVENT_ID': event_id,
+        'ENERGY': energy,
+        'DEC': dec,
+        'RA': ra,
+        'TIME': timestamp
+    })
     hdu = fits.table_to_hdu(t)
 
     # add information to HDU header
@@ -146,14 +150,13 @@ def create_observation_index_hdu(runs):
     returns a fits hdu object
     '''
     obs_id = _observation_ids(runs)
-    ra_pnt = runs.right_ascension.values * u.hourangle
+    ra_pnt = u.Quantity(runs.right_ascension.values, u.hourangle, copy=False)
     ra_pnt = ra_pnt.to('deg')
 
-    dec_pnt = runs.declination.values * u.deg
-    zen_pnt = runs.zenith.values * u.deg
-    alt_pnt = (90 - runs.zenith.values) * u.deg
-    az_pnt = runs.azimuth.values * u.deg
-
+    dec_pnt = u.Quantity(runs.declination.values, u.deg, copy=False)
+    zen_pnt = u.Quantity(runs.zenith.values, u.deg, copy=False)
+    alt_pnt = u.Quantity(90 - runs.zenith.values, u.deg, copy=False)
+    az_pnt = u.Quantity(runs.azimuth.values, u.deg, copy=False)
 
     n_tels = np.ones_like(obs_id)
     tellist = np.ones_like(obs_id).astype(np.str)
@@ -198,7 +201,7 @@ def add_meta_information_to_hdu(hdu, **kwargs):
     hdu.header['EQUINOX'] = '2000.0'
     hdu.header['RADECSYS'] = 'ICRS'
     hdu.header['EUNIT'] = 'TeV'
-    hdu.header['DATE'] = datetime.datetime.now().replace(microsecond=0).isoformat()
+    hdu.header['DATE'] = Time.now().iso
     _extend_hdu_header(hdu.header, TIME_INFO)
     if kwargs:
         _extend_hdu_header(hdu.header, kwargs)
