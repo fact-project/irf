@@ -19,7 +19,7 @@ def _make_energy_bins(energy_true, energy_prediction, bins, e_ref=1 * u.TeV):
     high = np.log10(e_max / e_ref)
     bin_edges = np.logspace(low, high, endpoint=True, num=bins + 1)
 
-    return bin_edges
+    return bin_edges * e_ref
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
@@ -61,7 +61,7 @@ def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, 
     hist, bins_e_true, bins_e_prediction = np.histogram2d(
         (energy_true / e_ref).to_value(u.dimensionless_unscaled),
         (energy_prediction / e_ref).to_value(u.dimensionless_unscaled),
-        bins=bins,
+        bins=(bins / e_ref).to_value(u.dimensionless_unscaled),
     )
 
     if smoothing > 0:
@@ -70,7 +70,7 @@ def energy_dispersion(energy_true, energy_prediction, bins=10, normalize=False, 
     if normalize:
         hist = _normalize_hist(hist)
 
-    return hist, bins_e_true * e_ref, bins_e_prediction * e_ref
+    return hist, bins_e_true, bins_e_prediction
 
 
 @u.quantity_input(energy_true=u.TeV, energy_prediction=u.TeV)
@@ -121,7 +121,7 @@ def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10,
     hist, bins_e_true, bins_mu = np.histogram2d(
         (energy_true / e_ref).to_value(u.dimensionless_unscaled),
         migra,
-        bins=[bins_energy, bins_mu],
+        bins=[(bins_energy / e_ref).to_value(u.dimensionless_unscaled), bins_mu],
     )
 
     if smoothing > 0:
@@ -130,7 +130,7 @@ def energy_migration(energy_true, energy_prediction, bins_energy=10, bins_mu=10,
     if normalize:
         hist = _normalize_hist(hist)
 
-    return hist, bins_energy * energy_true.unit, bins_mu
+    return hist, bins_energy, bins_mu
 
 
 def _normalize_hist(hist):
