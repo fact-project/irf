@@ -71,9 +71,25 @@ def main(outputfile, inputdir):
             df = pd.DataFrame(event_headers[event_columns])
             to_h5py(df, outputfile, key='corsika_events', mode='a')
 
+
         print('saving runwise information')
         runs = pd.DataFrame(np.array(run_headers)[run_header_columns])
-        runs['n_events'] = np.array(run_ends)['n_events']
+
+        # some runs might have failed and thus no run end block
+        for run_end in run_ends:
+            if run_end is not None:
+                dtype = run_end.dtype
+                break
+        else:
+            raise IOError('All run_end blocks are None, all runs failed.')
+
+        dummy = np.array([(b'RUNE', np.nan, np.nan)], dtype=dtype)[0]
+        run_ends = [r if r is not None else dummy for r in run_ends]
+        run_ends = np.array(run_ends)
+
+        print('Number of failed runs:', np.count_nonzero(np.isnan(run_ends['n_events'])))
+
+        runs['n_events'] = run_ends['n_events']
 
         to_h5py(runs, outputfile, key='corsika_runs', mode='a')
         print('done')
