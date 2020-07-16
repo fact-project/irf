@@ -130,7 +130,12 @@ def calculate_sensitivity(
     if 'weight' not in df.columns:
         df['weight'] = 1
 
-    bin_edges = np.logspace(np.log10(e_min / u.GeV), np.log10(e_max / u.GeV), n_bins + 1)
+    bin_edges = np.logspace(
+        np.log10(e_min / u.GeV).to_value(u.dimensionless_unscaled),
+        np.log10(e_max / u.GeV).to_value(u.dimensionless_unscaled),
+        n_bins + 1
+    )
+
     bin_edges = np.append(-np.inf, np.append(bin_edges, np.inf))
     bin_id = np.arange(n_bins + 2) + 1
 
